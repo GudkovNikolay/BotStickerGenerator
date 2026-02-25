@@ -85,7 +85,8 @@ class DatabaseService:
         status: str,
         sticker_pack_id: str = None,
         images_count: int = 0,
-        error_message: str = None
+        error_message: str = None,
+        sticker_pack_name: str = None
     ) -> None:
         """Обновить статус генерации"""
         await self.session.execute(
@@ -95,7 +96,8 @@ class DatabaseService:
                 status=status,
                 sticker_pack_id=sticker_pack_id,
                 images_count=images_count,
-                error_message=error_message
+                error_message=error_message,
+                sticker_pack_name=sticker_pack_name
             )
         )
         await self.session.commit()

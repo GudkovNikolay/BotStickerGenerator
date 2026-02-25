@@ -35,10 +35,8 @@ class User(Base):
     payments = relationship("Payment", back_populates="user")
     referrals = relationship("User", remote_side=[id], backref="referrer")
     
-    __table_args__ = (
-        Index("idx_telegram_id", "telegram_id"),
-        Index("idx_referral_code", "referral_code"),
-    )
+    # Индексы создаются автоматически через index=True в колонках
+    # telegram_id и referral_code уже имеют index=True
 
 
 class Generation(Base):
@@ -54,14 +52,15 @@ class Generation(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
+    sticker_pack_name = Column(String, nullable=True) 
     
     # Relationships
     user = relationship("User", back_populates="generations")
     
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
-        Index("idx_status", "status"),
-        Index("idx_created_at", "created_at"),
+        Index("idx_generation_user_id", "user_id"),
+        Index("idx_generation_status", "status"),
+        Index("idx_generation_created_at", "created_at"),
     )
 
 
@@ -76,7 +75,7 @@ class Payment(Base):
     provider = Column(String(50), nullable=False)  # yookassa, stripe
     payment_id = Column(String(255), unique=True, nullable=False, index=True)
     status = Column(String(50), default="pending")  # pending, succeeded, failed, canceled
-    metadata = Column(Text, nullable=True)  # JSON для дополнительных данных
+    extra_metadata = Column(Text, nullable=True)  # JSON для дополнительных данных
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -84,9 +83,9 @@ class Payment(Base):
     user = relationship("User", back_populates="payments")
     
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
-        Index("idx_payment_id", "payment_id"),
-        Index("idx_status", "status"),
+        Index("idx_payment_user_id", "user_id"),
+        # payment_id уже имеет index=True через unique=True
+        Index("idx_payment_status", "status"),
     )
 
 
@@ -102,8 +101,8 @@ class ReferralReward(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     __table_args__ = (
-        Index("idx_referrer_id", "referrer_id"),
-        Index("idx_referred_id", "referred_id"),
+        Index("idx_reward_referrer_id", "referrer_id"),
+        Index("idx_reward_referred_id", "referred_id"),
     )
 
 
@@ -129,6 +128,24 @@ async def get_session() -> AsyncSession:
 
 async def init_db():
     """Инициализация базы данных"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        async with engine.begin() as conn:
+            # Создаем таблицы
+            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+            logger.info("База данных инициализирована успешно")
+    except Exception as e:
+        logger.warning(f"Предупреждение при инициализации БД: {e}")
+        # Пытаемся создать только таблицы без индексов
+        try:
+            async with engine.begin() as conn:
+                # Создаем таблицы без индексов
+                for table in Base.metadata.tables.values():
+                    await conn.run_sync(table.create, checkfirst=True)
+                logger.info("Таблицы созданы, индексы могут быть пропущены")
+        except Exception as e2:
+            logger.error(f"Критическая ошибка при создании таблиц: {e2}")
+            raise
 

@@ -11,8 +11,13 @@ class Settings(BaseSettings):
     # Telegram
     BOT_TOKEN: str
     
-    # OpenAI
-    OPENAI_API_KEY: str
+    # Image generation (локальный Stable Diffusion через diffusers)
+    # Backend пока только один: "local" (StableDiffusionPipeline)
+    IMAGE_BACKEND: str = "local"
+
+    # Hugging Face hub (для загрузки модели один раз, дальше работа локально)
+    HF_TOKEN: str = ""  # опционально, если модель приватная
+    HF_MODEL: str = "runwayml/stable-diffusion-v1-5"
     
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./bot.db"
