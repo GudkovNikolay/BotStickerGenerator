@@ -4,7 +4,7 @@
 from aiogram.types import FSInputFile, InputSticker, InputFile
 import logging
 from aiogram import Router
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -21,6 +21,8 @@ from PIL import Image
 import tempfile
 from pathlib import Path
 from io import BytesIO
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import F 
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ class GenerationStates(StatesGroup):
     waiting_for_prompt = State()
     waiting_for_referral = State()
     waiting_for_pack_name = State()
+    waiting_for_payment_method = State()
 
 
 @router.message(CommandStart())
@@ -479,30 +482,21 @@ async def cmd_referral(message: Message):
 
 
 @router.message(Command("buy"))
-async def cmd_buy(message: Message):
-    """Покупка генераций"""
-    payment_service = PaymentService()
+async def cmd_buy(message: Message, state: FSMContext):
+    """Выбор способа оплаты"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"💳 Банковская карта ({settings.STICKER_PACK_PRICE} руб)", callback_data="pay_card")],
+        [InlineKeyboardButton(text=f"⭐ Звезды Telegram ({settings.STICKER_PACK_STARS_PRICE})", callback_data="pay_stars")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="cancel")]
+    ])
     
-    session = await get_session()
-    try:
-        db_service = DatabaseService(session)
-        
-        user = await db_service.get_or_create_user(
-            telegram_id=message.from_user.id
-        )
-        
-        # В MVP просто показываем информацию
-        # В продакшене здесь будет создание платежа
-        buy_text = (
-            f"💳 Покупка генераций\n\n"
-            f"Цена пакета (5 генераций): {settings.STICKER_PACK_PRICE} ₽\n\n"
-            f"В MVP режиме оплата пока не реализована.\n"
-            f"Используй бесплатные генерации или реферальную систему!"
-        )
-        
-        await message.answer(buy_text)
-    finally:
-        await session.close()
+    await message.answer(
+        f"💳 Выберите способ оплаты\n\n"
+        f"Пакет: {settings.STICKER_PACK_COUNT} генераций\n"
+        f"Цена: {settings.STICKER_PACK_PRICE} ₽ или {settings.STICKER_PACK_STARS_PRICE} ⭐",
+        reply_markup=keyboard
+    )
+    await state.set_state(GenerationStates.waiting_for_payment_method)
 
 
 @router.message(Command("help"))
@@ -522,6 +516,114 @@ async def cmd_help(message: Message):
     
     await message.answer(help_text)
 
+@router.callback_query(lambda c: c.data == "pay_card")
+async def process_card_payment(callback: CallbackQuery, state: FSMContext):
+    """Обработка оплаты картой"""
+    # Создание счета через провайдера
+    prices = [LabeledPrice(label="Пакет генераций", amount=settings.STICKER_PACK_PRICE * 100)]  # в копейках
+    
+    await callback.message.bot.send_invoice(
+        chat_id=callback.message.chat.id,
+        title="Пакет генераций стикеров",
+        description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
+        payload=f"generation_pack_{callback.from_user.id}",
+        provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
+        currency=settings.CURRENCY,
+        prices=prices,
+        start_parameter="create_sticker_pack",
+        need_email=False,
+        need_phone_number=False,
+        need_shipping_address=False,
+        is_flexible=False,
+        photo_url="https://example.com/sticker_preview.jpg",
+        photo_width=500,
+        photo_height=500
+    )
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == "pay_stars")
+async def process_stars_payment(callback: CallbackQuery, state: FSMContext):
+    """Обработка оплаты звездами Telegram"""
+    await callback.message.bot.send_invoice(
+        chat_id=callback.message.chat.id,
+        title="Пакет генераций стикеров",
+        description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
+        payload=f"stars_pack_{callback.from_user.id}",
+        provider_token=None,  # для звезд token не нужен
+        currency="XTR",  # специальная валюта для звезд
+        prices=[LabeledPrice(label="Пакет генераций", amount=settings.STICKER_PACK_STARS_PRICE)],
+        start_parameter="create_sticker_pack"
+    )
+    await callback.answer()
+
+@router.pre_checkout_query()
+async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
+    """Подтверждение платежа"""
+    await pre_checkout_query.bot.answer_pre_checkout_query(
+        pre_checkout_query.id, 
+        ok=True
+    )
+
+@router.message(F.successful_payment)
+async def successful_payment_handler(message: Message):
+    """Обработка успешного платежа"""
+    payment_info = message.successful_payment
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        
+        # Определяем количество генераций в зависимости от суммы
+        if payment_info.currency == "XTR":
+            generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
+        else:
+            generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
+        
+        # Добавляем генерации пользователю
+        user = await db_service.get_or_create_user(
+            telegram_id=message.from_user.id
+        )
+        
+        # Обновляем количество генераций (добавьте метод в db_service)
+        await db_service.add_generations(user.id, generations_to_add)
+        
+        # Сохраняем информацию о платеже
+        await db_service.save_payment(
+            user_id=user.id,
+            payment_id=payment_info.provider_payment_charge_id or payment_info.telegram_payment_charge_id,
+            amount=payment_info.total_amount,
+            currency=payment_info.currency,
+            generations_added=generations_to_add
+        )
+        
+        await message.answer(
+            f"✅ Оплата прошла успешно!\n\n"
+            f"Вам добавлено {generations_to_add} генераций.\n"
+            f"Используйте /generate для создания стикеров!"
+        )
+    finally:
+        await session.close()
+
+@router.message(Command("history"))
+async def cmd_history(message: Message):
+    """История платежей"""
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        user = await db_service.get_or_create_user(telegram_id=message.from_user.id)
+        payments = await db_service.get_payment_history(user.id)
+        
+        if not payments:
+            await message.answer("📭 История платежей пуста")
+            return
+        
+        text = "📊 История платежей:\n\n"
+        for p in payments:
+            text += f"• {p.created_at.strftime('%d.%m.%Y')}: {p.generations_added} ген. - {p.amount/100} {p.currency}\n"
+        
+        await message.answer(text)
+    finally:
+        await session.close()
 
 @router.message()
 async def handle_unknown(message: Message):
