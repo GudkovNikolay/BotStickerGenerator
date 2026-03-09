@@ -10,14 +10,11 @@ class Settings(BaseSettings):
     
     # Telegram
     BOT_TOKEN: str
-    
-    # Image generation (локальный Stable Diffusion через diffusers)
-    # Backend пока только один: "local" (StableDiffusionPipeline)
-    IMAGE_BACKEND: str = "local"
 
-    # Hugging Face hub (для загрузки модели один раз, дальше работа локально)
-    HF_TOKEN: str = ""  # опционально, если модель приватная
-    HF_MODEL: str = "runwayml/stable-diffusion-v1-5"
+    # Image generation через Kie.ai (nano-banana-pro)
+    IMAGE_BACKEND: str = "kie_ai"
+    KIE_API_KEY: str = ""
+    KIE_MODEL: str = "nano-banana-pro"
     
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./bot.db"
