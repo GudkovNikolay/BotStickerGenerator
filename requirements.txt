@@ -6,8 +6,3 @@ Pillow==10.3.0
 python-dotenv==1.0.1
 pydantic==2.6.1
 pydantic-settings==2.1.0
-diffusers==0.30.0
-torch>=2.1.0
-transformers>=4.40.0
-safetensors>=0.4.2
-
