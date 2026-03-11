@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-KIE_API_BASE_URL = "https://api.kie.ai/api/v1/jobs/createTask"
+KIE_API_BASE_URL = "https://api.kie.ai"
 
 
 def _size_to_aspect_ratio(size: str) -> str:
