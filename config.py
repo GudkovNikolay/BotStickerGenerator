@@ -2,11 +2,18 @@
 Конфигурация приложения
 """
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Настройки приложения"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
     
     # Telegram
     BOT_TOKEN: str
@@ -26,11 +33,11 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     
     # Bot Settings
-    ADMIN_USER_IDS: str = ""
-    FREE_GENERATIONS_PER_USER: int = 3
-    STICKER_PACK_COUNT: int = 5
-    STICKER_PACK_PRICE: int = 100  # в рублях/центах
-    STICKER_PACK_STARS_PRICE: int = 50 # цена в звездах Telegram
+    # ADMIN_USER_IDS: str = ""
+    # FREE_GENERATIONS_PER_USER: int = 3
+    # STICKER_PACK_COUNT: int = 5
+    # STICKER_PACK_PRICE: int = 100  # в рублях/центах
+    # STICKER_PACK_STARS_PRICE: int = 50 # цена в звездах Telegram
 
     PAYMENTS_PROVIDER_TOKEN: str = ""
     CURRENCY: str = "RUB"  # валюта
@@ -50,11 +57,6 @@ class Settings(BaseSettings):
         if not self.ADMIN_USER_IDS:
             return []
         return [int(uid.strip()) for uid in self.ADMIN_USER_IDS.split(",")]
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
 
 
 # Создаем директории для файлов
