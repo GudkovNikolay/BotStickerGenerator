@@ -16,19 +16,19 @@ pip install -r requirements.txt
 ```env
 BOT_TOKEN=ваш_токен_от_BotFather
 
-# Локальный Stable Diffusion (рекомендуется для MVP)
-IMAGE_BACKEND=local
-LOCAL_SD_URL=http://127.0.0.1:7860
+# Генерация изображений через Kie.ai (nano-banana-pro)
+IMAGE_BACKEND=kie_ai
+KIE_API_KEY=ваш_kie_ai_api_key
+KIE_MODEL=nano-banana-pro
 
-# (Опционально) Hugging Face Inference API
-# IMAGE_BACKEND=hf
-# HF_TOKEN=ваш_huggingface_token
-# HF_MODEL=stabilityai/stable-diffusion-xl-base-1.0
+# Генерация “листом” (один запрос -> сетка стикеров)
+STICKER_GRID_ROWS=3
+STICKER_GRID_COLS=3
 ```
 
-Минимально необходимые переменные для локального режима:
+Минимально необходимые переменные:
 - `BOT_TOKEN` - получите у @BotFather в Telegram
-- `LOCAL_SD_URL` - URL локального Stable Diffusion (по умолчанию `http://127.0.0.1:7860`)
+- `KIE_API_KEY` - API ключ Kie.ai
 
 ## Шаг 3: Запуск бота
 
@@ -52,7 +52,7 @@ python bot.py
 - `handlers.py` - обработчики команд и сообщений
 - `database.py` - модели базы данных
 - `db_service.py` - сервис для работы с БД
-- `image_generator.py` - генерация изображений через Hugging Face Inference API (или локальный SD)
+- `image_generator.py` - генерация изображений через Kie.ai (nano-banana-pro)
 - `sticker_processor.py` - обработка изображений в стикеры
 - `payment_service.py` - сервис платежей (заглушка для MVP)
 - `config.py` - конфигурация приложения

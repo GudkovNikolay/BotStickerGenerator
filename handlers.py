@@ -227,7 +227,12 @@ async def process_prompt(message: Message, state: FSMContext):
             else:
                 # Реальная генерация
                 image_generator = ImageGenerator()
-                images = await image_generator.generate_images(prompt, count=5)
+                images = await image_generator.generate_images(
+                    prompt,
+                    count=0,
+                    grid_rows=settings.STICKER_GRID_ROWS,
+                    grid_cols=settings.STICKER_GRID_COLS,
+                )
                 
                 if not images:
                     raise Exception("Не удалось сгенерировать изображения")

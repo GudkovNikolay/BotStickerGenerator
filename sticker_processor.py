@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class StickerProcessor:
     """Обработчик изображений в стикеры"""
     
-    # Требования Telegram для стикеров
-    MAX_SIZE = 512  # Максимальный размер стороны в пикселях
+    # Требования Telegram для статических стикеров
+    TARGET_SIZE = 512  # Строго 512x512 пикселей
     MAX_FILE_SIZE = 512 * 1024  # 512 KB максимум
     
     async def process_to_stickers(
@@ -23,25 +23,25 @@ class StickerProcessor:
         output_dir: Path
     ) -> List[Path]:
         """
-        Обработка изображений в стикеры WebP
+        Обработка изображений в стикеры PNG для Telegram
         
         Args:
             image_paths: Список путей к исходным изображениям
             output_dir: Директория для сохранения стикеров
             
         Returns:
-            Список путей к обработанным стикерам
+            Список путей к обработанным стикерам (PNG)
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         sticker_paths = []
         
         for i, image_path in enumerate(image_paths):
             try:
-                sticker_path = output_dir / f"sticker_{i}.webp"
+                sticker_path = output_dir / f"sticker_{i:03d}.png"  # PNG для статических стикеров
                 await self._process_single_image(image_path, sticker_path)
                 sticker_paths.append(sticker_path)
             except Exception as e:
-                logger.error(f"Ошибка обработки изображения {image_path}: {e}")
+                logger.error(f"Ошибка обработки изображения {image_path}: {e}", exc_info=True)
                 continue
         
         return sticker_paths
@@ -63,43 +63,49 @@ class StickerProcessor:
     
     def _process_image_sync(self, input_path: Path, output_path: Path) -> None:
         """Синхронная обработка изображения"""
-        # Открываем изображение
-        img = Image.open(input_path)
+        try:
+            # Открываем изображение
+            img = Image.open(input_path)
+            
+            # Конвертируем в RGBA для поддержки прозрачности
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+            
+            # Удаляем фон (опционально)
+            # img = self._remove_background(img)
+            
+            # Приводим к строго квадратному формату 512x512
+            img = self._make_telegram_sticker(img)
+            
+            # Сохраняем как PNG с оптимизацией
+            self._save_png_optimized(img, output_path)
+            
+            # Проверяем размер
+            file_size = output_path.stat().st_size
+            if file_size > self.MAX_FILE_SIZE:
+                logger.warning(f"Стикер {output_path} слишком большой: {file_size} bytes")
+                
+        except Exception as e:
+            logger.error(f"Ошибка в _process_image_sync: {e}", exc_info=True)
+            raise
+    
+    def _make_telegram_sticker(self, img: Image.Image) -> Image.Image:
+        """
+        Приводит изображение к формату стикера Telegram:
+        - Квадратное 512x512
+        - Белый фон для прозрачных областей (опционально)
+        """
+        # 1. Обрезаем до квадрата с центрированием
+        img = self._crop_to_square(img)
         
-        # Конвертируем в RGBA если нужно
+        # 2. Ресайзим точно до 512x512
+        if img.size != (self.TARGET_SIZE, self.TARGET_SIZE):
+            img = img.resize((self.TARGET_SIZE, self.TARGET_SIZE), Image.Resampling.LANCZOS)
+        
+        # 3. Убеждаемся, что изображение в RGBA
         if img.mode != "RGBA":
             img = img.convert("RGBA")
         
-        # Удаляем фон (простой метод - можно улучшить)
-        img = self._remove_background(img)
-        
-        # Обрезаем до квадрата с центрированием
-        img = self._crop_to_square(img)
-        
-        # Изменяем размер до максимум 512x512
-        img = self._resize_to_max(img, self.MAX_SIZE)
-        
-        # Сохраняем как WebP с оптимизацией
-        self._save_webp_optimized(img, output_path)
-    
-    def _remove_background(self, img: Image.Image) -> Image.Image:
-        """
-        Удаление фона (упрощенная версия)
-        В продакшене лучше использовать rembg или другие библиотеки
-        """
-        # Простой метод: делаем прозрачным белый/светлый фон
-        # Для MVP этого достаточно, в будущем можно использовать rembg
-        data = img.getdata()
-        new_data = []
-        
-        for item in data:
-            # Если пиксель очень светлый (почти белый), делаем прозрачным
-            if item[0] > 240 and item[1] > 240 and item[2] > 240:
-                new_data.append((255, 255, 255, 0))
-            else:
-                new_data.append(item)
-        
-        img.putdata(new_data)
         return img
     
     def _crop_to_square(self, img: Image.Image) -> Image.Image:
@@ -120,38 +126,102 @@ class StickerProcessor:
         
         return img.crop((left, top, right, bottom))
     
-    def _resize_to_max(self, img: Image.Image, max_size: int) -> Image.Image:
-        """Изменение размера с сохранением пропорций"""
+    def _save_png_optimized(self, img: Image.Image, output_path: Path) -> None:
+        """Сохранение в PNG с оптимизацией размера файла"""
+        # Сохраняем с оптимизацией
+        img.save(
+            output_path,
+            "PNG",
+            optimize=True,
+            compress_level=9  # Максимальная компрессия
+        )
+        
+        # Проверяем размер и если слишком большой - уменьшаем качество через ресайз
+        if output_path.stat().st_size > self.MAX_FILE_SIZE:
+            logger.info(f"Файл слишком большой, уменьшаем размер до 512x512 с оптимизацией")
+            
+            # Создаем копию с чуть меньшим размером (но не меньше 512x512)
+            scale = (self.MAX_FILE_SIZE / output_path.stat().st_size) ** 0.5
+            if scale < 1:
+                new_size = (int(self.TARGET_SIZE * scale), int(self.TARGET_SIZE * scale))
+                if new_size[0] >= 512:  # Сохраняем минимальный размер
+                    img_resized = img.resize(new_size, Image.Resampling.LANCZOS)
+                    
+                    # Создаем холст 512x512 и вставляем изображение по центру
+                    final_img = Image.new('RGBA', (self.TARGET_SIZE, self.TARGET_SIZE), (255, 255, 255, 0))
+                    x_offset = (self.TARGET_SIZE - new_size[0]) // 2
+                    y_offset = (self.TARGET_SIZE - new_size[1]) // 2
+                    final_img.paste(img_resized, (x_offset, y_offset), img_resized)
+                    
+                    final_img.save(output_path, "PNG", optimize=True, compress_level=9)
+
+
+# Альтернативная версия, если нужны WebP стикеры (анимированные или с прозрачностью)
+class StickerProcessorWebP:
+    """Обработчик для WebP стикеров (если нужно)"""
+    
+    TARGET_SIZE = 512
+    MAX_FILE_SIZE = 512 * 1024
+    
+    async def process_to_stickers(self, image_paths: List[Path], output_dir: Path) -> List[Path]:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        sticker_paths = []
+        
+        for i, image_path in enumerate(image_paths):
+            try:
+                sticker_path = output_dir / f"sticker_{i:03d}.webp"  # WebP
+                await self._process_single_image(image_path, sticker_path)
+                sticker_paths.append(sticker_path)
+            except Exception as e:
+                logger.error(f"Ошибка обработки {image_path}: {e}")
+                continue
+        
+        return sticker_paths
+    
+    async def _process_single_image(self, input_path: Path, output_path: Path) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._process_image_sync, input_path, output_path)
+    
+    def _process_image_sync(self, input_path: Path, output_path: Path) -> None:
+        img = Image.open(input_path)
+        
+        # Конвертируем в RGBA
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        
+        # Приводим к формату стикера
+        img = self._make_telegram_sticker(img)
+        
+        # Сохраняем как WebP
+        self._save_webp_optimized(img, output_path)
+    
+    def _make_telegram_sticker(self, img: Image.Image) -> Image.Image:
+        """Приводит к квадрату 512x512"""
+        # Обрезаем до квадрата
         width, height = img.size
+        size = min(width, height)
+        left = (width - size) // 2
+        top = (height - size) // 2
+        img = img.crop((left, top, left + size, top + size))
         
-        if width <= max_size and height <= max_size:
-            return img
+        # Ресайзим до 512x512
+        if img.size != (self.TARGET_SIZE, self.TARGET_SIZE):
+            img = img.resize((self.TARGET_SIZE, self.TARGET_SIZE), Image.Resampling.LANCZOS)
         
-        # Вычисляем новый размер с сохранением пропорций
-        ratio = min(max_size / width, max_size / height)
-        new_width = int(width * ratio)
-        new_height = int(height * ratio)
-        
-        return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        return img
     
     def _save_webp_optimized(self, img: Image.Image, output_path: Path) -> None:
-        """Сохранение в WebP с оптимизацией размера файла"""
-        # Пробуем разные уровни качества пока файл не станет меньше 512KB
-        for quality in range(95, 50, -5):
-            img.save(
-                output_path,
-                "WEBP",
-                quality=quality,
-                method=6  # Максимальная компрессия
-            )
-            
+        """Сохранение в WebP с оптимизацией размера"""
+        # Пробуем разные уровни качества
+        for quality in range(90, 50, -5):
+            img.save(output_path, "WEBP", quality=quality, method=6)
             if output_path.stat().st_size <= self.MAX_FILE_SIZE:
+                logger.info(f"WebP сохранен с качеством {quality}, размер: {output_path.stat().st_size} bytes")
                 return
         
         # Если все еще слишком большой, уменьшаем размер
         if output_path.stat().st_size > self.MAX_FILE_SIZE:
             scale = (self.MAX_FILE_SIZE / output_path.stat().st_size) ** 0.5
             new_size = (int(img.width * scale), int(img.height * scale))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-            img.save(output_path, "WEBP", quality=80, method=6)
-
+            img_resized = img.resize(new_size, Image.Resampling.LANCZOS)
+            img_resized.save(output_path, "WEBP", quality=80, method=6)
