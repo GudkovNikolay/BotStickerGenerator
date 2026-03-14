@@ -634,8 +634,8 @@ async def cmd_history(message: Message):
     finally:
         await session.close()
 
-# В handlers.py добавьте новые состояния
-
+# ============= НОВЫЙ КОД ДЛЯ СЕТКИ СТИКЕРОВ =============
+# Состояния FSM для сетки
 class StickerGridStates(StatesGroup):
     waiting_for_theme = State()
     waiting_for_sticker_edit = State()
@@ -671,6 +671,8 @@ class StickerGrid:
     
     @classmethod
     def from_dict(cls, data):
+        if not data:
+            return cls(5)
         grid = cls(data.get('total_stickers', 5))
         grid.theme = data.get('theme', 'Не выбрана')
         grid.stickers = data.get('stickers', [])
@@ -773,7 +775,8 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
                     text=f"{idx+1}. {sticker['emoji']}",
                     callback_data=f"grid_edit_{idx}"
                 ))
-        keyboard_buttons.append(row)
+        if row:
+            keyboard_buttons.append(row)
     
     # Добавляем кнопки управления
     keyboard_buttons.append([
@@ -789,11 +792,21 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     action = "Редактирование" if edit else "Текущая сетка"
-    await message.edit_text(
-        f"📋 **{action} стикерпака**\n\n{display}",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    
+    # Проверяем, можем ли мы редактировать сообщение
+    try:
+        await message.edit_text(
+            f"📋 **{action} стикерпака**\n\n{display}",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+    except:
+        # Если не можем редактировать (например, это новое сообщение), отправляем новое
+        await message.answer(
+            f"📋 **{action} стикерпака**\n\n{display}",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
 
 
 @router.callback_query(lambda c: c.data == "grid_theme")
@@ -873,6 +886,9 @@ async def sticker_edit_description(callback: CallbackQuery, state: FSMContext):
     grid = StickerGrid.from_dict(data.get('grid'))
     idx = grid.current_editing
     
+    # Сохраняем ID сообщения для последующего удаления
+    await state.update_data(last_grid_message_id=callback.message.message_id)
+    
     await callback.message.edit_text(
         f"📝 **Редактирование описания стикера #{idx + 1}**\n\n"
         f"Текущее описание: *{grid.stickers[idx]['description']}*\n\n"
@@ -893,6 +909,22 @@ async def process_sticker_description(message: Message, state: FSMContext):
     grid.stickers[idx]['description'] = message.text
     await state.update_data(grid=grid.to_dict())
     
+    # Удаляем сообщение с описанием, чтобы не засорять чат
+    await message.delete()
+    
+    # Получаем ID последнего сообщения с сеткой
+    last_msg_id = data.get('last_grid_message_id')
+    if last_msg_id:
+        try:
+            # Пытаемся получить сообщение и отредактировать его
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=last_msg_id,
+                text=f"✏️ **Редактирование стикера #{idx + 1}**\n\nВозвращаемся к меню..."
+            )
+        except:
+            pass
+    
     # Возвращаемся к меню стикера
     await show_sticker_edit_menu(message, state, grid, idx)
 
@@ -906,6 +938,9 @@ async def sticker_edit_caption(callback: CallbackQuery, state: FSMContext):
     idx = grid.current_editing
     
     current = grid.stickers[idx]['caption'] or "нет"
+    
+    # Сохраняем ID сообщения для последующего удаления
+    await state.update_data(last_grid_message_id=callback.message.message_id)
     
     await callback.message.edit_text(
         f"💬 **Редактирование подписи стикера #{idx + 1}**\n\n"
@@ -930,6 +965,21 @@ async def process_sticker_caption(message: Message, state: FSMContext):
         grid.stickers[idx]['caption'] = message.text
     
     await state.update_data(grid=grid.to_dict())
+    
+    # Удаляем сообщение с подписью
+    await message.delete()
+    
+    # Получаем ID последнего сообщения с сеткой
+    last_msg_id = data.get('last_grid_message_id')
+    if last_msg_id:
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=last_msg_id,
+                text=f"✏️ **Редактирование стикера #{idx + 1}**\n\nВозвращаемся к меню..."
+            )
+        except:
+            pass
     
     # Возвращаемся к меню стикера
     await show_sticker_edit_menu(message, state, grid, idx)
@@ -1061,11 +1111,18 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
         [InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="sticker_back")]
     ])
     
-    # Определяем, откуда пришел запрос (message или callback)
-    if hasattr(message, 'edit_text'):
-        await message.edit_text(text, reply_markup=keyboard)
-    else:
-        await message.answer(text, reply_markup=keyboard)
+    try:
+        # Пробуем отредактировать существующее сообщение
+        if hasattr(message, 'edit_text'):
+            await message.edit_text(text, reply_markup=keyboard)
+        else:
+            # Если это новое сообщение, отправляем и сохраняем ID
+            sent = await message.answer(text, reply_markup=keyboard)
+            await state.update_data(last_grid_message_id=sent.message_id)
+    except:
+        # Если не получилось отредактировать, отправляем новое
+        sent = await message.answer(text, reply_markup=keyboard)
+        await state.update_data(last_grid_message_id=sent.message_id)
 
 
 @router.callback_query(lambda c: c.data == "grid_preview")
@@ -1156,6 +1213,11 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
             grid=grid,
             generation_id=generation.id,
             db_service=db_service
+        )
+        
+        await callback.message.edit_text(
+            f"✅ **Стикерпак успешно создан!**\n\n"
+            f"Все стикеры сгенерированы с вашими описаниями."
         )
         
     except Exception as e:
@@ -1265,6 +1327,7 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
                 images_count=len(input_stickers),
                 sticker_pack_name=pack_name
             )
+# ============= КОНЕЦ КОДА ДЛЯ СЕТКИ =============
 
 @router.message()
 async def handle_unknown(message: Message):
