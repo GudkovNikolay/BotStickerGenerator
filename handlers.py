@@ -23,7 +23,7 @@ from pathlib import Path
 from io import BytesIO
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import F 
-from typing import Dict, Any
+from typing import Dict, Any, List
 import re
 
 logger = logging.getLogger(__name__)
@@ -1265,7 +1265,7 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
                 images_count=len(input_stickers),
                 sticker_pack_name=pack_name
             )
-            
+
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
