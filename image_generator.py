@@ -155,10 +155,15 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
     if img.mode != 'RGBA':
         img = img.convert('RGBA')
     
+    w, h = img.size
+
     # Если нужно, удаляем рамку вокруг всей сетки
     if remove_border:
         left, top, right, bottom = _find_content_borders(img)
-        img = img.crop((left, top, right, bottom))
+        if left != w - right or top != h - bottom:
+            left, top, right, bottom = 0, 0, w, h
+        else:
+            img = img.crop((left, top, right, bottom))
     
     w, h = img.size
     
@@ -174,6 +179,7 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
             upper = r * cell_h
             right_bound = (c + 1) * cell_w if c < cols - 1 else w
             lower_bound = (r + 1) * cell_h if r < rows - 1 else h
+            print(f"left={left}, top={upper}, right={right_bound}, bottom={lower_bound}")
             
             # Вырезаем ячейку
             tile = img.crop((left, upper, right_bound, lower_bound))
@@ -197,7 +203,7 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
 class ImageGenerator:
     """Генератор изображений через API Kie.ai (nano-banana-pro)."""
 
-    def __init__(self, use_local_file: bool = False, local_file_path: str = "png_output_cats.png"):
+    def __init__(self, use_local_file: bool = True, local_file_path: str = "kie_raw_1773566480658.png"):
         """
         Args:
             use_local_file: Если True, использовать локальный файл вместо API
@@ -236,11 +242,13 @@ class ImageGenerator:
         draw = ImageDraw.Draw(debug_img, 'RGBA')
         
         width, height = debug_img.size
-        
+        w, h = width, height
         # 1. Если нужно, находим и рисуем границы содержимого
         if remove_border:
             left, top, right, bottom = _find_content_borders(img)
-            
+
+            if left != w - right or top != h - bottom:
+                left, top, right, bottom = 0, 0, w, h
             # Рисуем внешнюю рамку (синюю) - найденные границы
             draw.rectangle(
                 [(left, top), (right, bottom)],
