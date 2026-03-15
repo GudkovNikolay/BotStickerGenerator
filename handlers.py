@@ -727,23 +727,17 @@ class StickerGrid:
         return display
 
 
+# Найдите и замените существующий обработчик команды /grid
 @router.message(Command("grid"))
 async def cmd_start_grid(message: Message, state: FSMContext):
-    """Запуск создания стикерпака через сетку"""
+    """Запуск создания стикерпака через сетку из 9 стикеров"""
     
-    # Клавиатура для выбора количества стикеров
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📦 5 стикеров", callback_data="grid_size_5"),
-         InlineKeyboardButton(text="📦 9 стикеров", callback_data="grid_size_9")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="grid_cancel")]
-    ])
+    # Создаем новую сетку с 9 стикерами
+    grid = StickerGrid(total_stickers=9)
+    await state.update_data(grid=grid.to_dict())
     
-    await message.answer(
-        "🎨 **Создание стикерпака через сетку**\n\n"
-        "Выберите количество стикеров:",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    # Показываем главное меню
+    await show_grid_main(message, state, grid, edit=False)
 
 
 @router.callback_query(lambda c: c.data.startswith('grid_size_'))
