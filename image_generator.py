@@ -406,6 +406,12 @@ class ImageGenerator:
             if not grid_bytes:
                 raise Exception("Пустой результат генерации сетки")
 
+            # Сохраняем сырую картинку от Kie без изменений
+            settings.TEMP_DIR.mkdir(parents=True, exist_ok=True)
+            kie_raw_path = settings.TEMP_DIR / f"kie_raw_{int(time.time() * 1000)}.png"
+            kie_raw_path.write_bytes(grid_bytes)
+            logger.info(f"Сохранена сырая картинка от Kie: {kie_raw_path}")
+
             return self._process_grid_bytes(grid_bytes, count, grid_rows, grid_cols)
 
         except Exception as e:
