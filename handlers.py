@@ -653,10 +653,10 @@ class StickerGrid:
         self.total_stickers = total_stickers
         self.current_editing = 0
         
-        # Инициализируем стикеры значениями по умолчанию
+        # Инициализируем стикеры пустыми значениями
         for i in range(total_stickers):
             self.stickers.append({
-                'description': f'Стикер {i+1}',
+                'description': '',  # Пустое описание по умолчанию
                 'caption': '',
                 'emoji': '🖼️'
             })
@@ -679,10 +679,17 @@ class StickerGrid:
         grid.current_editing = data.get('current_editing', 0)
         return grid
     
+    def has_description(self, index: int) -> bool:
+        """Проверяет, есть ли описание у стикера"""
+        return bool(self.stickers[index]['description'].strip())
+    
     def get_sticker_summary(self, index: int) -> str:
         """Возвращает краткое описание стикера"""
         sticker = self.stickers[index]
-        desc = sticker['description'][:15] + ('...' if len(sticker['description']) > 15 else '')
+        if sticker['description']:
+            desc = sticker['description'][:15] + ('...' if len(sticker['description']) > 15 else '')
+        else:
+            desc = "🔹 не задано"
         caption = f" 💬 {sticker['caption'][:10]}..." if sticker['caption'] else ""
         return f"{sticker['emoji']} {desc}{caption}"
     
@@ -690,6 +697,7 @@ class StickerGrid:
         """Возвращает отображение всей сетки"""
         display = f"📋 **Текущая сетка стикеров**\n"
         display += f"📌 **Тема:** {self.theme}\n\n"
+        display += "💡 *Описания можно не заполнять - тогда стикеры будут на общую тему*\n\n"
         
         # Создаем сетку 3x3 (или меньше)
         for i in range(0, self.total_stickers, 3):
@@ -698,7 +706,9 @@ class StickerGrid:
                 if i + j < self.total_stickers:
                     idx = i + j
                     sticker = self.stickers[idx]
-                    row.append(f"[{idx+1}] {sticker['emoji']}")
+                    # Показываем эмодзи и индикатор заполненности
+                    indicator = "✅" if sticker['description'] else "⬜"
+                    row.append(f"[{idx+1}] {sticker['emoji']}{indicator}")
                 else:
                     row.append("[ ]")
             display += " | ".join(row) + "\n"
@@ -707,7 +717,10 @@ class StickerGrid:
         
         # Детали каждого стикера
         for i, sticker in enumerate(self.stickers):
-            display += f"\n**{i+1}.** {sticker['emoji']} *{sticker['description']}*"
+            if sticker['description']:
+                display += f"\n**{i+1}.** {sticker['emoji']} *{sticker['description']}*"
+            else:
+                display += f"\n**{i+1}.** {sticker['emoji']} *[будет на тему {self.theme}]*"
             if sticker['caption']:
                 display += f"\n    💬 {sticker['caption']}"
         
@@ -770,9 +783,10 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
             if i + j < grid.total_stickers:
                 idx = i + j
                 sticker = grid.stickers[idx]
-                # Показываем эмодзи в кнопке
+                # Показываем эмодзи и статус в кнопке
+                status = "✅" if sticker['description'] else "⬜"
                 row.append(InlineKeyboardButton(
-                    text=f"{idx+1}. {sticker['emoji']}",
+                    text=f"{idx+1}. {sticker['emoji']}{status}",
                     callback_data=f"grid_edit_{idx}"
                 ))
         if row:
@@ -819,7 +833,8 @@ async def grid_edit_theme(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"📌 **Текущая тема:** {grid.theme}\n\n"
         f"Введите новую общую тему для стикерпака:\n"
-        f"Например: *Космические котики* или *Смешные собаки*"
+        f"Например: *Космические котики* или *Смешные собаки*\n\n"
+        f"💡 *Эта тема будет использоваться для всех стикеров, у которых не задано конкретное описание*"
     )
     await state.set_state(StickerGridStates.waiting_for_theme)
     await callback.answer()
@@ -857,10 +872,15 @@ async def grid_edit_sticker(callback: CallbackQuery, state: FSMContext):
         f"✏️ **Редактирование стикера #{sticker_idx + 1}**\n\n"
         f"Текущие настройки:\n"
         f"• Эмодзи: {sticker['emoji']}\n"
-        f"• Описание: *{sticker['description']}*\n"
-        f"• Подпись: {sticker['caption'] or 'нет'}\n\n"
-        f"Что хотите изменить?"
     )
+    
+    if sticker['description']:
+        text += f"• Описание: *{sticker['description']}*\n"
+    else:
+        text += f"• Описание: *не задано (будет использована общая тема)*\n"
+    
+    text += f"• Подпись: {sticker['caption'] or 'нет'}\n\n"
+    text += f"Что хотите изменить?"
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -889,10 +909,13 @@ async def sticker_edit_description(callback: CallbackQuery, state: FSMContext):
     # Сохраняем ID сообщения для последующего удаления
     await state.update_data(last_grid_message_id=callback.message.message_id)
     
+    current_desc = grid.stickers[idx]['description'] or "не задано"
+    
     await callback.message.edit_text(
         f"📝 **Редактирование описания стикера #{idx + 1}**\n\n"
-        f"Текущее описание: *{grid.stickers[idx]['description']}*\n\n"
-        f"Введите новое описание:"
+        f"Текущее описание: *{current_desc}*\n\n"
+        f"Введите новое описание (или /skip чтобы оставить пустым и использовать общую тему):\n\n"
+        f"💡 *Если оставить пустым, стикер будет сгенерирован на общую тему*"
     )
     await state.set_state(StickerGridStates.waiting_for_description)
     await callback.answer()
@@ -906,24 +929,15 @@ async def process_sticker_description(message: Message, state: FSMContext):
     grid = StickerGrid.from_dict(data.get('grid'))
     idx = grid.current_editing
     
-    grid.stickers[idx]['description'] = message.text
+    if message.text == "/skip":
+        grid.stickers[idx]['description'] = ""
+    else:
+        grid.stickers[idx]['description'] = message.text
+    
     await state.update_data(grid=grid.to_dict())
     
     # Удаляем сообщение с описанием, чтобы не засорять чат
     await message.delete()
-    
-    # Получаем ID последнего сообщения с сеткой
-    last_msg_id = data.get('last_grid_message_id')
-    if last_msg_id:
-        try:
-            # Пытаемся получить сообщение и отредактировать его
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=last_msg_id,
-                text=f"✏️ **Редактирование стикера #{idx + 1}**\n\nВозвращаемся к меню..."
-            )
-        except:
-            pass
     
     # Возвращаемся к меню стикера
     await show_sticker_edit_menu(message, state, grid, idx)
@@ -945,7 +959,8 @@ async def sticker_edit_caption(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"💬 **Редактирование подписи стикера #{idx + 1}**\n\n"
         f"Текущая подпись: {current}\n\n"
-        f"Введите новую подпись (или /skip чтобы оставить пустой):"
+        f"Введите новую подпись (или /skip чтобы оставить пустой):\n\n"
+        f"💡 *Подпись будет добавлена на стикер в виде текста*"
     )
     await state.set_state(StickerGridStates.waiting_for_caption)
     await callback.answer()
@@ -968,18 +983,6 @@ async def process_sticker_caption(message: Message, state: FSMContext):
     
     # Удаляем сообщение с подписью
     await message.delete()
-    
-    # Получаем ID последнего сообщения с сеткой
-    last_msg_id = data.get('last_grid_message_id')
-    if last_msg_id:
-        try:
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=last_msg_id,
-                text=f"✏️ **Редактирование стикера #{idx + 1}**\n\nВозвращаемся к меню..."
-            )
-        except:
-            pass
     
     # Возвращаемся к меню стикера
     await show_sticker_edit_menu(message, state, grid, idx)
@@ -1064,7 +1067,7 @@ async def sticker_reset(callback: CallbackQuery, state: FSMContext):
     idx = grid.current_editing
     
     grid.stickers[idx] = {
-        'description': f'Стикер {idx+1}',
+        'description': '',
         'caption': '',
         'emoji': '🖼️'
     }
@@ -1094,10 +1097,15 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
         f"✏️ **Редактирование стикера #{idx + 1}**\n\n"
         f"Текущие настройки:\n"
         f"• Эмодзи: {sticker['emoji']}\n"
-        f"• Описание: *{sticker['description']}*\n"
-        f"• Подпись: {sticker['caption'] or 'нет'}\n\n"
-        f"Что хотите изменить?"
     )
+    
+    if sticker['description']:
+        text += f"• Описание: *{sticker['description']}*\n"
+    else:
+        text += f"• Описание: *не задано (будет использована общая тема)*\n"
+    
+    text += f"• Подпись: {sticker['caption'] or 'нет'}\n\n"
+    text += f"Что хотите изменить?"
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -1137,9 +1145,14 @@ async def grid_show_preview(callback: CallbackQuery, state: FSMContext):
     preview += f"📊 **Стикеров:** {len(grid.stickers)}\n\n"
     
     for i, sticker in enumerate(grid.stickers, 1):
-        preview += f"**{i}.** {sticker['emoji']} *{sticker['description']}*"
+        preview += f"**{i}.** {sticker['emoji']} "
+        if sticker['description']:
+            preview += f"*{sticker['description']}*"
+        else:
+            preview += f"*[на тему {grid.theme}]*"
+        
         if sticker['caption']:
-            preview += f"\n   💬 {sticker['caption']}"
+            preview += f"\n   💬 Будет добавлена подпись: {sticker['caption']}"
         preview += "\n\n"
     
     preview += "✅ Всё верно? Можно генерировать!"
@@ -1163,7 +1176,9 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"🎨 **Начинаю генерацию...**\n\n"
         f"Тема: {grid.theme}\n"
-        f"Стикеров: {len(grid.stickers)}\n\n"
+        f"Стикеров: {len(grid.stickers)}\n"
+        f"С индивидуальными описаниями: {sum(1 for s in grid.stickers if s['description'])}\n"
+        f"С подписями: {sum(1 for s in grid.stickers if s['caption'])}\n\n"
         f"Это займёт около минуты."
     )
     
@@ -1233,21 +1248,45 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
 def create_grid_prompt(grid: StickerGrid) -> str:
     """Создает промпт из данных сетки"""
     
-    prompt = f"Create a sticker sheet with theme: {grid.theme}\n\n"
-    prompt += f"The sheet should contain {len(grid.stickers)} different stickers.\n\n"
-    prompt += "Each sticker must be unique with these specific descriptions:\n"
+    # Базовая часть промпта
+    prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers.\n\n"
+    prompt += f"Overall theme: {grid.theme}\n\n"
     
-    for i, sticker in enumerate(grid.stickers, 1):
-        prompt += f"Sticker {i}: {sticker['description']}\n"
+    # Проверяем, есть ли индивидуальные описания
+    has_descriptions = any(s['description'] for s in grid.stickers)
+    
+    if has_descriptions:
+        prompt += "Each sticker should be unique. Here are the specific requirements:\n"
+        for i, sticker in enumerate(grid.stickers, 1):
+            if sticker['description']:
+                prompt += f"Sticker {i}: {sticker['description']}"
+            else:
+                prompt += f"Sticker {i}: Based on overall theme: {grid.theme}"
+            
+            # Добавляем подпись в промпт, если она есть
+            if sticker['caption']:
+                prompt += f" - Include text caption '{sticker['caption']}' on the sticker"
+            prompt += "\n"
+    else:
+        # Если нет индивидуальных описаний, все стикеры на общую тему
+        prompt += f"Create {len(grid.stickers)} variations on the theme: {grid.theme}\n"
+        prompt += "Each sticker should be different but all related to the same theme.\n"
+        
+        # Добавляем подписи, если они есть
+        captions = [s['caption'] for s in grid.stickers if s['caption']]
+        if captions:
+            prompt += "\nInclude these text captions on the respective stickers:\n"
+            for i, caption in enumerate(captions, 1):
+                prompt += f"Sticker {i}: include caption '{caption}'\n"
     
     prompt += """
-Requirements:
-- 3x3 grid layout
+Technical requirements:
+- 3x3 grid layout with clear separation between cells
 - Clean white background
-- Clear separation between cells
-- Consistent art style
+- Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
-- No text on stickers (captions will be added separately)
+- If captions are specified, they should be clearly visible and integrated into the sticker design
+- No additional text, logos, or watermarks
 """
     
     return prompt
@@ -1314,12 +1353,19 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
                 if sticker.get('caption'):
                     captions_text += f"{i}. {sticker['caption']}\n"
             
-            await bot.send_message(
-                user_id,
-                f"✅ **Стикер-пак создан!**\n\n"
-                f"🔗 {pack_link}\n\n"
-                f"{captions_text}"
-            )
+            if captions_text != "📝 **Подписи к стикерам:**\n":
+                await bot.send_message(
+                    user_id,
+                    f"✅ **Стикер-пак создан!**\n\n"
+                    f"🔗 {pack_link}\n\n"
+                    f"{captions_text}"
+                )
+            else:
+                await bot.send_message(
+                    user_id,
+                    f"✅ **Стикер-пак создан!**\n\n"
+                    f"🔗 {pack_link}"
+                )
             
             await db_service.update_generation(
                 generation_id,
@@ -1327,7 +1373,7 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
                 images_count=len(input_stickers),
                 sticker_pack_name=pack_name
             )
-# ============= КОНЕЦ КОДА ДЛЯ СЕТКИ =============
+# ============= КОНЕЦ КОДА ДЛЯ СЕТКИ =============# ============= КОНЕЦ КОДА ДЛЯ СЕТКИ =============
 
 @router.message()
 async def handle_unknown(message: Message):
