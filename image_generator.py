@@ -203,7 +203,7 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
 class ImageGenerator:
     """Генератор изображений через API Kie.ai (nano-banana-pro)."""
 
-    def __init__(self, use_local_file: bool = True, local_file_path: str = "kie_raw_1773566480658.png"):
+    def __init__(self, use_local_file: bool = False, local_file_path: str = "kie_raw_1773566480658.png"):
         """
         Args:
             use_local_file: Если True, использовать локальный файл вместо API

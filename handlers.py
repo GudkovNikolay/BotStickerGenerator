@@ -863,7 +863,7 @@ async def grid_edit_sticker(callback: CallbackQuery, state: FSMContext):
     
     # Меню редактирования стикера
     text = (
-        f"✏️ **Редактирование стикера #{sticker_idx + 1}**\n\n"
+        f"✏️ **Редактирование стикера #{sticker_idx + 1} из {grid.total_stickers}**\n\n"
         f"Текущие настройки:\n"
         f"• Эмодзи: {sticker['emoji']}\n"
     )
@@ -876,6 +876,10 @@ async def grid_edit_sticker(callback: CallbackQuery, state: FSMContext):
     text += f"• Подпись: {sticker['caption'] or 'нет'}\n\n"
     text += f"Что хотите изменить?"
     
+    # Определяем следующий стикер (с зацикливанием)
+    next_idx = (sticker_idx + 1) % grid.total_stickers
+    prev_idx = (sticker_idx - 1) % grid.total_stickers
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📝 Описание", callback_data="sticker_edit_desc"),
@@ -885,12 +889,15 @@ async def grid_edit_sticker(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="😊 Эмодзи", callback_data="sticker_edit_emoji"),
             InlineKeyboardButton(text="🔄 Сбросить", callback_data="sticker_reset")
         ],
+        [
+            InlineKeyboardButton(text=f"◀️ Предыдущий (#{prev_idx+1})", callback_data=f"grid_edit_{prev_idx}"),
+            InlineKeyboardButton(text=f"Следующий (#{next_idx+1}) ▶️", callback_data=f"grid_edit_{next_idx}")
+        ],
         [InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="sticker_back")]
     ])
     
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
-
 
 @router.callback_query(lambda c: c.data == "sticker_edit_desc")
 async def sticker_edit_description(callback: CallbackQuery, state: FSMContext):
@@ -1088,7 +1095,7 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
     sticker = grid.stickers[idx]
     
     text = (
-        f"✏️ **Редактирование стикера #{idx + 1}**\n\n"
+        f"✏️ **Редактирование стикера #{idx + 1} из {grid.total_stickers}**\n\n"
         f"Текущие настройки:\n"
         f"• Эмодзи: {sticker['emoji']}\n"
     )
@@ -1101,6 +1108,10 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
     text += f"• Подпись: {sticker['caption'] or 'нет'}\n\n"
     text += f"Что хотите изменить?"
     
+    # Определяем следующий стикер (с зацикливанием)
+    next_idx = (idx + 1) % grid.total_stickers
+    prev_idx = (idx - 1) % grid.total_stickers
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📝 Описание", callback_data="sticker_edit_desc"),
@@ -1109,6 +1120,10 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
         [
             InlineKeyboardButton(text="😊 Эмодзи", callback_data="sticker_edit_emoji"),
             InlineKeyboardButton(text="🔄 Сбросить", callback_data="sticker_reset")
+        ],
+        [
+            InlineKeyboardButton(text=f"◀️ Предыдущий (#{prev_idx+1})", callback_data=f"grid_edit_{prev_idx}"),
+            InlineKeyboardButton(text=f"Следующий (#{next_idx+1}) ▶️", callback_data=f"grid_edit_{next_idx}")
         ],
         [InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="sticker_back")]
     ])
@@ -1125,7 +1140,6 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
         # Если не получилось отредактировать, отправляем новое
         sent = await message.answer(text, reply_markup=keyboard)
         await state.update_data(last_grid_message_id=sent.message_id)
-
 
 @router.callback_query(lambda c: c.data == "grid_preview")
 async def grid_show_preview(callback: CallbackQuery, state: FSMContext):
