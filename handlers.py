@@ -83,36 +83,36 @@ async def cmd_start(message: Message, state: FSMContext):
         await session.close()
 
 
-@router.message(Command("grid"))
-async def cmd_grid(message: Message, state: FSMContext):
-    """Обработка команды /grid — старт генерации сетки стикеров"""
-    session = await get_session()
-    try:
-        db_service = DatabaseService(session)
+# @router.message(Command("grid"))
+# async def cmd_grid(message: Message, state: FSMContext):
+#     """Обработка команды /grid — старт генерации сетки стикеров"""
+#     session = await get_session()
+#     try:
+#         db_service = DatabaseService(session)
         
-        user = await db_service.get_or_create_user(
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-            first_name=message.from_user.first_name
-        )
+#         user = await db_service.get_or_create_user(
+#             telegram_id=message.from_user.id,
+#             username=message.from_user.username,
+#             first_name=message.from_user.first_name
+#         )
         
-        stats = await db_service.get_user_stats(user.id)
+#         stats = await db_service.get_user_stats(user.id)
         
-        if stats['free_generations_left'] > 0 or stats['is_premium']:
-            await message.answer(
-                "✍️ Отправь текстовое описание для сетки стикеров.\n\n"
-                "Например: 'Кот в космосе' или 'Смайлик с пиццей'"
-            )
-            await state.set_state(GenerationStates.waiting_for_prompt)
-            # Убеждаемся, что тестовый режим выключен
-            await state.update_data(test_mode=False)
-        else:
-            await message.answer(
-                "❌ У тебя закончились бесплатные генерации.\n\n"
-                "Используй /buy чтобы купить пак генераций."
-            )
-    finally:
-        await session.close()
+#         if stats['free_generations_left'] > 0 or stats['is_premium']:
+#             await message.answer(
+#                 "✍️ Отправь текстовое описание для сетки стикеров.\n\n"
+#                 "Например: 'Кот в космосе' или 'Смайлик с пиццей'"
+#             )
+#             await state.set_state(GenerationStates.waiting_for_prompt)
+#             # Убеждаемся, что тестовый режим выключен
+#             await state.update_data(test_mode=False)
+#         else:
+#             await message.answer(
+#                 "❌ У тебя закончились бесплатные генерации.\n\n"
+#                 "Используй /buy чтобы купить пак генераций."
+#             )
+#     finally:
+#         await session.close()
 
 
 @router.message(Command("test_generate"))
