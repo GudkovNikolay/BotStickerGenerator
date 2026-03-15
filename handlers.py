@@ -67,7 +67,7 @@ async def cmd_start(message: Message, state: FSMContext):
         
         welcome_text = (
             f"👋 Привет, {message.from_user.first_name or 'друг'}!\n\n"
-            f"Я бот для генерации стикеров по текстовому описанию.\n\n"
+            f"Я бот для генерации сеток стикеров по текстовому описанию.\n\n"
             f"📊 Твоя статистика:\n"
             f"• Бесплатных генераций: {stats['free_generations_left']}\n"
             f"• Всего генераций: {stats['total_generations']}\n"
@@ -75,7 +75,7 @@ async def cmd_start(message: Message, state: FSMContext):
             f"• Рефералов: {stats['referrals_count']}\n\n"
             f"🎁 Твой реферальный код: `{stats['referral_code']}`\n"
             f"Поделись им с друзьями и получай бонусы!\n\n"
-            f"Используй /generate чтобы начать генерацию стикеров."
+            f"🧩 Чтобы сразу начать, отправь команду /grid — я создам сетку стикеров и соберу из неё пак."
         )
         
         await message.answer(welcome_text, parse_mode="Markdown")
@@ -83,9 +83,9 @@ async def cmd_start(message: Message, state: FSMContext):
         await session.close()
 
 
-@router.message(Command("generate"))
-async def cmd_generate(message: Message, state: FSMContext):
-    """Обработка команды /generate"""
+@router.message(Command("grid"))
+async def cmd_grid(message: Message, state: FSMContext):
+    """Обработка команды /grid — старт генерации сетки стикеров"""
     session = await get_session()
     try:
         db_service = DatabaseService(session)
@@ -100,7 +100,7 @@ async def cmd_generate(message: Message, state: FSMContext):
         
         if stats['free_generations_left'] > 0 or stats['is_premium']:
             await message.answer(
-                "✍️ Отправь текстовое описание стикеров, которые хочешь создать.\n\n"
+                "✍️ Отправь текстовое описание для сетки стикеров.\n\n"
                 "Например: 'Кот в космосе' или 'Смайлик с пиццей'"
             )
             await state.set_state(GenerationStates.waiting_for_prompt)
@@ -514,13 +514,13 @@ async def cmd_help(message: Message):
     help_text = (
         "📖 Справка по командам:\n\n"
         "/start - Начать работу с ботом\n"
-        "/generate - Создать стикер-пак по текстовому описанию\n"
+        "/grid - Создать сетку стикеров по текстовому описанию\n"
         "/stats - Показать статистику\n"
         "/referral - Реферальная система\n"
         "/buy - Купить генерации\n"
         "/help - Эта справка\n"
         "/test_generate - (Тест) Быстрая генерация с белым шумом\n\n"
-        "💡 После генерации стикеры автоматически собираются в стикер-пак!"
+        "💡 После генерации сетка автоматически режется на стикеры и собирается в стикер-пак!"
     )
     
     await message.answer(help_text)
@@ -608,7 +608,7 @@ async def successful_payment_handler(message: Message):
         await message.answer(
             f"✅ Оплата прошла успешно!\n\n"
             f"Вам добавлено {generations_to_add} генераций.\n"
-            f"Используйте /generate для создания стикеров!"
+            f"Используйте /grid для создания сетки стикеров!"
         )
     finally:
         await session.close()
