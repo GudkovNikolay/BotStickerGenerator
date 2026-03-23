@@ -1257,7 +1257,7 @@ def create_grid_prompt(grid: StickerGrid) -> str:
     """Создает промпт из данных сетки"""
     
     # Базовая часть промпта
-    prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers on a TRANSPARENT background.\n\n"
+    prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers.\n\n"
     prompt += f"Overall theme: {grid.theme}\n\n"
     
     # Проверяем, есть ли индивидуальные описания
@@ -1290,11 +1290,17 @@ def create_grid_prompt(grid: StickerGrid) -> str:
     prompt += """
 Technical requirements:
 - 3x3 grid layout with clear separation between cells
-- Clean white background
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
 - No additional text, logos, or watermarks
+- The sticker MUST be on a PURE WHITE background (#FFFFFF)
+- The sticker MUST have a CLEAR, SHARP outline with NO GRADIENT at the edges
+- The sticker MUST be CENTERED in the image
+- The sticker MUST NOT touch the edges of the image
+- Leave at least 20% padding around the sticker
+- The sticker should have a CLEAN, WELL-DEFINED silhouette
+- NO shadows, NO gradients on the background
 """
     
     return prompt
