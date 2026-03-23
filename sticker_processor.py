@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List
 from PIL import Image
 import asyncio
+from crop import crop_image_to_sticker_content
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +71,13 @@ class StickerProcessor:
             # Конвертируем в RGBA для поддержки прозрачности
             if img.mode != "RGBA":
                 img = img.convert("RGBA")
-            
-            # Удаляем фон (опционально)
-            # img = self._remove_background(img)
-            
-            # Приводим к строго квадратному формату 512x512
+
+            # Вырезаем фон/рамку до содержимого (как в crop.py),
+            # чтобы каждый тайл после grid-сетки стал “чистым стикером”.
+            img = crop_image_to_sticker_content(img)
+
+            # Приводим к квадратному формату Telegram 512x512
+            # без повторной обрезки контента по краям (только масштаб + padding).
             img = self._make_telegram_sticker(img)
             
             # Сохраняем как PNG с оптимизацией
@@ -92,21 +95,29 @@ class StickerProcessor:
     def _make_telegram_sticker(self, img: Image.Image) -> Image.Image:
         """
         Приводит изображение к формату стикера Telegram:
-        - Квадратное 512x512
-        - Белый фон для прозрачных областей (опционально)
+        - квадратный холст 512x512
+        - сохраняем весь контент: scale-to-fit + padding
         """
-        # 1. Обрезаем до квадрата с центрированием
-        img = self._crop_to_square(img)
-        
-        # 2. Ресайзим точно до 512x512
-        if img.size != (self.TARGET_SIZE, self.TARGET_SIZE):
-            img = img.resize((self.TARGET_SIZE, self.TARGET_SIZE), Image.Resampling.LANCZOS)
-        
-        # 3. Убеждаемся, что изображение в RGBA
         if img.mode != "RGBA":
             img = img.convert("RGBA")
-        
-        return img
+
+        # Пропорционально вписываем изображение в 512x512
+        src_w, src_h = img.size
+        if src_w <= 0 or src_h <= 0:
+            return Image.new("RGBA", (self.TARGET_SIZE, self.TARGET_SIZE), (255, 255, 255, 0))
+
+        scale = min(self.TARGET_SIZE / src_w, self.TARGET_SIZE / src_h)
+        new_w = max(1, int(src_w * scale))
+        new_h = max(1, int(src_h * scale))
+
+        img_resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        # Холст с прозрачным фоном (Telegram принимает прозрачность)
+        canvas = Image.new("RGBA", (self.TARGET_SIZE, self.TARGET_SIZE), (255, 255, 255, 0))
+        x_offset = (self.TARGET_SIZE - new_w) // 2
+        y_offset = (self.TARGET_SIZE - new_h) // 2
+        canvas.paste(img_resized, (x_offset, y_offset), img_resized)
+        return canvas
     
     def _crop_to_square(self, img: Image.Image) -> Image.Image:
         """Обрезка до квадрата с центрированием"""
@@ -188,7 +199,10 @@ class StickerProcessorWebP:
         # Конвертируем в RGBA
         if img.mode != "RGBA":
             img = img.convert("RGBA")
-        
+
+        # Обрезаем до содержимого (как в crop.py)
+        img = crop_image_to_sticker_content(img)
+
         # Приводим к формату стикера
         img = self._make_telegram_sticker(img)
         
@@ -196,19 +210,24 @@ class StickerProcessorWebP:
         self._save_webp_optimized(img, output_path)
     
     def _make_telegram_sticker(self, img: Image.Image) -> Image.Image:
-        """Приводит к квадрату 512x512"""
-        # Обрезаем до квадрата
-        width, height = img.size
-        size = min(width, height)
-        left = (width - size) // 2
-        top = (height - size) // 2
-        img = img.crop((left, top, left + size, top + size))
-        
-        # Ресайзим до 512x512
-        if img.size != (self.TARGET_SIZE, self.TARGET_SIZE):
-            img = img.resize((self.TARGET_SIZE, self.TARGET_SIZE), Image.Resampling.LANCZOS)
-        
-        return img
+        """Укладывает контент в квадратный холст 512x512 без обрезки по краям."""
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+
+        src_w, src_h = img.size
+        if src_w <= 0 or src_h <= 0:
+            return Image.new("RGBA", (self.TARGET_SIZE, self.TARGET_SIZE), (255, 255, 255, 0))
+
+        scale = min(self.TARGET_SIZE / src_w, self.TARGET_SIZE / src_h)
+        new_w = max(1, int(src_w * scale))
+        new_h = max(1, int(src_h * scale))
+
+        img_resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGBA", (self.TARGET_SIZE, self.TARGET_SIZE), (255, 255, 255, 0))
+        x_offset = (self.TARGET_SIZE - new_w) // 2
+        y_offset = (self.TARGET_SIZE - new_h) // 2
+        canvas.paste(img_resized, (x_offset, y_offset), img_resized)
+        return canvas
     
     def _save_webp_optimized(self, img: Image.Image, output_path: Path) -> None:
         """Сохранение в WebP с оптимизацией размера"""
