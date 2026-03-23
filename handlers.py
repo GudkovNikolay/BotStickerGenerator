@@ -1257,7 +1257,7 @@ def create_grid_prompt(grid: StickerGrid) -> str:
     """Создает промпт из данных сетки"""
     
     # Базовая часть промпта
-    prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers.\n\n"
+    prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers on a TRANSPARENT background.\n\n"
     prompt += f"Overall theme: {grid.theme}\n\n"
     
     # Проверяем, есть ли индивидуальные описания
