@@ -1274,6 +1274,8 @@ def create_grid_prompt(grid: StickerGrid) -> str:
             # Добавляем подпись в промпт, если она есть
             if sticker['caption']:
                 prompt += f" - Include text caption '{sticker['caption']}' on the sticker"
+            else:
+                prompt += f" - Do not include any text on the sticker"
             prompt += "\n"
     else:
         # Если нет индивидуальных описаний, все стикеры на общую тему
@@ -1293,14 +1295,12 @@ Technical requirements:
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
-- No additional text, logos, or watermarks
-- The sticker MUST be on a PURE WHITE background (#FFFFFF)
-- The sticker MUST have a CLEAR, SHARP outline with NO GRADIENT at the edges
+- The sticker MUST have a PURE MAGENTA background (#FF00FF, RGB: 255,0,255)
+- The background must be EXACTLY RGB(255,0,255) with NO variation
+- NO shadows, NO gradients on the background
+- The sticker itself MUST NOT contain any magenta color
 - The sticker MUST be CENTERED in the image
 - The sticker MUST NOT touch the edges of the image
-- Leave at least 20% padding around the sticker
-- The sticker should have a CLEAN, WELL-DEFINED silhouette
-- NO shadows, NO gradients on the background
 """
     
     return prompt
