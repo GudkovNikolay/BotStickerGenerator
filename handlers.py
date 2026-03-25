@@ -1406,6 +1406,7 @@ Technical requirements:
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
+- Stickers spaced apart with visible magenta gaps between them
 
 """
     
