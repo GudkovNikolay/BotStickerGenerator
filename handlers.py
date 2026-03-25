@@ -1407,6 +1407,8 @@ Technical requirements:
 - The magenta background forms a continuous, unbroken sea around all stickers
 - Stickers do NOT touch each other - there is magenta space between them
 - Stickers are centered in their virtual sqaures and do not touch its edges
+- Make stickers look small by creating big margins between them
+- big distance between stickers
 - The stickers itself MUST NOT contain any magenta color
 - NO shadows, NO gradients on the background
 - Consistent art style across all stickers
