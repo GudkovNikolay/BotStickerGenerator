@@ -1403,6 +1403,7 @@ Technical requirements:
 - The sheet MUST have a PURE MAGENTA background (#FF00FF, RGB: 255,0,255)
 - The background must be EXACTLY RGB(255,0,255) with NO variation
 - NO shadows, NO gradients on the background
+- Background should be plain with nothing else exept stickers 
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
