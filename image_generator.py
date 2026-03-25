@@ -582,7 +582,7 @@ class ImageGenerator:
             },
         }
 
-        async with httpx.AsyncClient(base_url=KIE_API_BASE_URL, timeout=60) as client:
+        async with httpx.AsyncClient(base_url=KIE_API_BASE_URL, timeout=180) as client:
             # 1. Создаем задачу генерации
             try:
                 resp = await client.post(
@@ -611,7 +611,7 @@ class ImageGenerator:
             logger.info(f"Kie.ai задача создана, taskId={task_id}")
 
             # 2. Пуллим статус задачи
-            max_wait_seconds = 120
+            max_wait_seconds = 300
             poll_interval = 3
             start_time = time.time()
 
