@@ -17,6 +17,7 @@ from config import settings
 import os
 import asyncio
 import numpy as np
+import time
 from PIL import Image
 import tempfile
 from pathlib import Path
@@ -25,6 +26,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import F 
 from typing import Dict, Any, List
 import re
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -643,6 +645,7 @@ class StickerGridStates(StatesGroup):
     waiting_for_caption = State()
     waiting_for_emoji = State()
     confirming = State()
+    waiting_for_reference_photo = State()
 
 class StickerGrid:
     """Класс для управления сеткой стикеров"""
@@ -764,8 +767,11 @@ async def process_grid_size(callback: CallbackQuery, state: FSMContext):
 
 async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid, edit: bool = False):
     """Показывает главное меню с сеткой"""
-    
+
+    data = await state.get_data()
+    has_reference_photo = bool(data.get("reference_photo_path"))
     display = grid.get_grid_display()
+    display += f"\n\n📷 Референс фото: {'✅' if has_reference_photo else '⬜'}"
     
     # Создаем клавиатуру с кнопками для каждого стикера
     keyboard_buttons = []
@@ -791,6 +797,13 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
         InlineKeyboardButton(text="📌 Выбрать тему", callback_data="grid_theme"),
         InlineKeyboardButton(text="👀 Предпросмотр", callback_data="grid_preview")
     ])
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text=f"📷 {'Обновить' if has_reference_photo else 'Загрузить'} референс фото",
+            callback_data="grid_reference_photo",
+        )
+    ])
     
     keyboard_buttons.append([
         InlineKeyboardButton(text="✅ Генерировать!", callback_data="grid_generate"),
@@ -815,6 +828,93 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
+
+
+@router.callback_query(lambda c: c.data == "grid_reference_photo")
+async def grid_reference_photo(callback: CallbackQuery, state: FSMContext):
+    """Попросить пользователя загрузить референсное фото."""
+    await state.set_state(StickerGridStates.waiting_for_reference_photo)
+    grid = StickerGrid.from_dict((await state.get_data()).get("grid"))
+
+    try:
+        await callback.message.edit_text(
+            "📷 Отправь референсное фото (желательно с лицом/персонажем).\n\n"
+            "После загрузки я буду просить Kie.ai сделать все стикеры с этим персонажем.\n\n"
+            "Можно отменить: нажми «◀️ Назад к сетке».",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="grid_reference_back")]]
+            ),
+        )
+    except Exception:
+        await callback.message.answer(
+            "📷 Отправь референсное фото (желательно с лицом/персонажем).\n\n"
+            "После загрузки я буду просить Kie.ai сделать все стикеры с этим персонажем.\n\n"
+            "Можно отменить: нажми «◀️ Назад к сетке».",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="grid_reference_back")]]
+            ),
+        )
+
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "grid_reference_back")
+async def grid_reference_back(callback: CallbackQuery, state: FSMContext):
+    """Возврат в меню сетки без изменения референса."""
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get("grid"))
+    await show_grid_main(callback.message, state, grid, edit=True)
+    await callback.answer()
+
+
+@router.message(StickerGridStates.waiting_for_reference_photo)
+async def process_reference_photo(message: Message, state: FSMContext):
+    """Обработка загруженного референсного фото."""
+    if not message.photo:
+        await message.answer("Пожалуйста, отправь фото. (Это лучше, чем документ или текст.)")
+        return
+
+    # Берём самое большое фото из массива
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    user_id = message.from_user.id
+
+    # Скачиваем файл через Telegram HTTP API
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            get_file_resp = await client.get(
+                "https://api.telegram.org/bot{token}/getFile".format(token=settings.BOT_TOKEN),
+                params={"file_id": file_id},
+            )
+            get_file_data = get_file_resp.json()
+            if not get_file_data.get("ok"):
+                raise RuntimeError(f"Telegram getFile failed: {get_file_data}")
+
+            file_path = get_file_data["result"]["file_path"]
+
+            file_url = "https://api.telegram.org/file/bot{token}/{file_path}".format(
+                token=settings.BOT_TOKEN, file_path=file_path
+            )
+            file_resp = await client.get(file_url)
+            if file_resp.status_code != 200:
+                raise RuntimeError(f"Telegram file download failed: {file_resp.status_code}")
+
+            content_type = file_resp.headers.get("content-type", "").lower()
+            ext = "png" if "png" in content_type else "jpg"
+
+            ref_path = settings.TEMP_DIR / f"grid_reference_{user_id}_{int(time.time() * 1000)}.{ext}"
+            ref_path.parent.mkdir(parents=True, exist_ok=True)
+            ref_path.write_bytes(file_resp.content)
+
+    except Exception as e:
+        await message.answer(f"❌ Не удалось скачать референсное фото: {e}")
+        return
+
+    await state.update_data(reference_photo_path=str(ref_path))
+
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get("grid"))
+    await show_grid_main(message, state, grid, edit=True)
 
 
 @router.callback_query(lambda c: c.data == "grid_theme")
@@ -1191,7 +1291,9 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
     )
     
     # Создаем промпт для генерации
-    prompt = create_grid_prompt(grid)
+    reference_photo_path = data.get("reference_photo_path")
+    has_reference_photo = bool(reference_photo_path)
+    prompt = create_grid_prompt(grid, has_reference_photo=has_reference_photo)
     
     # Здесь ваш существующий код генерации
     session = await get_session()
@@ -1214,7 +1316,8 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
             prompt,
             count=0,
             grid_rows=3,
-            grid_cols=3
+            grid_cols=3,
+            reference_image_path=reference_photo_path,
         )
         
         if not images:
@@ -1253,17 +1356,23 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-def create_grid_prompt(grid: StickerGrid) -> str:
+def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) -> str:
     """Создает промпт из данных сетки"""
     
     # Базовая часть промпта
     prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers.\n\n"
     prompt += f"Overall theme: {grid.theme}\n\n"
+
+    if has_reference_photo:
+        prompt += (
+            "A reference photo is provided. The character/person from the reference photo must "
+            "appear in ALL stickers. Keep the identity and appearance consistent across all grid cells.\n\n"
+        )
     
     # Проверяем, есть ли индивидуальные описания
     has_descriptions = any(s['description'] for s in grid.stickers)
     
-    if has_descriptions:
+    if True:#has_descriptions:
         prompt += "Each sticker should be unique. Here are the specific requirements:\n"
         for i, sticker in enumerate(grid.stickers, 1):
             if sticker['description']:

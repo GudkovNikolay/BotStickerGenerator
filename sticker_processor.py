@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 from PIL import Image
 import asyncio
-# from crop import crop_image_to_sticker_content
+from crop import crop_image_to_sticker_content
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class StickerProcessor:
 
             # Вырезаем фон/рамку до содержимого (как в crop.py),
             # чтобы каждый тайл после grid-сетки стал “чистым стикером”.
-            # img = crop_image_to_sticker_content(img)
+            img = crop_image_to_sticker_content(img)
 
             # Приводим к квадратному формату Telegram 512x512
             # без повторной обрезки контента по краям (только масштаб + padding).
@@ -201,7 +201,7 @@ class StickerProcessorWebP:
             img = img.convert("RGBA")
 
         # Обрезаем до содержимого (как в crop.py)
-        # img = crop_image_to_sticker_content(img)
+        img = crop_image_to_sticker_content(img)
 
         # Приводим к формату стикера
         img = self._make_telegram_sticker(img)

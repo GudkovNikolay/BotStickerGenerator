@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, Tuple
+import numpy as np
+import cv2
 
 from PIL import Image
 
@@ -120,11 +122,73 @@ def crop_image_to_sticker_content(
     img: Image.Image,
     *,
     alpha_threshold: int = 1,
-    bg_tolerance: int = 30,
+    bg_tolerance: int = 100,
+    magenta_bg: bool = True,  # Новый параметр
 ) -> Image.Image:
     """
     Версия "in-memory": используется внутри пайплайна стикера.
+    
+    Args:
+        img: Входное изображение
+        alpha_threshold: Порог прозрачности для обрезки
+        bg_tolerance: Допуск для удаления фона по цвету
+        magenta_bg: Если True, удаляет маджентовый фон (#FF00FF)
     """
+    # Если включен режим маджентового фона
+    if magenta_bg:
+        # Преобразуем в RGB если нужно
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Конвертируем в numpy
+        img_array = np.array(img)
+        
+        # Определяем цвет мадженты
+        magenta = np.array([255, 0, 255])
+        
+        # Вычисляем расстояние до мадженты
+        diff = np.sqrt(np.sum((img_array - magenta) ** 2, axis=2))
+        
+        # Создаем маску: пиксели, которые НЕ маджента
+        mask = (diff > bg_tolerance).astype(np.uint8) * 255
+        
+        # Морфологическая очистка для удаления шума
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        
+        # Находим самый большой контур (объект)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if contours:
+            largest = max(contours, key=cv2.contourArea)
+            
+            # Создаем чистую маску только для объекта
+            clean_mask = np.zeros_like(mask)
+            cv2.drawContours(clean_mask, [largest], -1, 255, -1)
+            
+            # Добавляем альфа-канал
+            rgba = cv2.cvtColor(img_array, cv2.COLOR_RGB2RGBA)
+            rgba[:, :, 3] = clean_mask
+            
+            # Обрезаем по bounding box
+            coords = cv2.findNonZero(clean_mask)
+            if coords is not None:
+                x, y, w, h = cv2.boundingRect(coords)
+                # Добавляем небольшой отступ
+                padding = 0#20
+                x = max(0, x - padding)
+                y = max(0, y - padding)
+                w = min(img_array.shape[1] - x, w + 2 * padding)
+                h = min(img_array.shape[0] - y, h + 2 * padding)
+                rgba = rgba[y:y+h, x:x+w]
+            
+            return Image.fromarray(rgba)
+        
+        # Если не нашли объект, возвращаем оригинал
+        return img
+    
+    # Старая логика для обычных случаев
     if rembg_remove is not None:
         img = rembg_remove(img)
         return crop_to_nontransparent_bbox(img, alpha_threshold=alpha_threshold)

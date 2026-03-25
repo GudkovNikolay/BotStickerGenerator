@@ -3,6 +3,7 @@
 """
 import asyncio
 import json
+import mimetypes
 import time
 from io import BytesIO
 from pathlib import Path
@@ -18,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 KIE_API_BASE_URL = "https://api.kie.ai"
+KIE_UPLOAD_BASE_URL = "https://kieai.redpandaai.co"
+KIE_UPLOAD_PATH = "images/user-uploads"
 
 
 def _size_to_aspect_ratio(size: str) -> str:
@@ -203,7 +206,7 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
 class ImageGenerator:
     """Генератор изображений через API Kie.ai (nano-banana-pro)."""
 
-    def __init__(self, use_local_file: bool = False, local_file_path: str = "kie_raw_1774276134141.png"):
+    def __init__(self, use_local_file: bool = False, local_file_path: str = "kie_raw_1774422316775.png"):
         """
         Args:
             use_local_file: Если True, использовать локальный файл вместо API
@@ -388,6 +391,7 @@ class ImageGenerator:
         size: str = "512x512",
         grid_rows: int = 3,
         grid_cols: int = 3,
+        reference_image_path: Optional[str] = None,
     ) -> List[Path]:
         """Генерация стикеров с удалением рамки, но без фильтров шума."""
         try:
@@ -406,10 +410,25 @@ class ImageGenerator:
             )
 
             grid_prompt = _build_grid_prompt(prompt, grid_rows, grid_cols)
+
+            # Загружаем референс-фото в Kie.ai File Upload API (получаем URL),
+            # чтобы передать его в input.image_input.
+            image_input: List[str] = []
+            if reference_image_path:
+                try:
+                    ref_path = Path(reference_image_path)
+                    if ref_path.exists():
+                        ref_url = await self._upload_reference_image(ref_path)
+                        if ref_url:
+                            image_input = [ref_url]
+                except Exception as e:
+                    logger.warning(f"Не удалось подготовить reference_image_path для Kie.ai: {e}")
+
             grid_bytes = await self._generate_single(
                 prompt=grid_prompt,
                 size=size,
                 aspect_ratio=_grid_to_aspect_ratio(grid_rows, grid_cols),
+                image_input=image_input,
             )
             if not grid_bytes:
                 raise Exception("Пустой результат генерации сетки")
@@ -425,6 +444,35 @@ class ImageGenerator:
         except Exception as e:
             logger.error(f"Ошибка генерации сетки стикеров: {e}")
             return []
+
+    async def _upload_reference_image(self, file_path: Path) -> Optional[str]:
+        """Загружает файл в Kie.ai и возвращает URL для input.image_input."""
+        if not settings.KIE_API_KEY:
+            return None
+
+        headers = {"Authorization": f"Bearer {settings.KIE_API_KEY}"}
+        upload_url = f"{KIE_UPLOAD_BASE_URL}/api/file-stream-upload"
+
+        with file_path.open("rb") as f:
+            mime_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+            files = {"file": (file_path.name, f, mime_type)}
+            data = {"uploadPath": KIE_UPLOAD_PATH, "fileName": file_path.name}
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(upload_url, headers=headers, files=files, data=data)
+
+        if resp.status_code != 200:
+            logger.warning(f"Kie.ai upload failed: status={resp.status_code}, body={resp.text}")
+            return None
+
+        try:
+            payload = resp.json()
+            # Пример ответа в доках: data.downloadUrl
+            if not payload.get("success"):
+                return None
+            data_obj = payload.get("data") or {}
+            return data_obj.get("downloadUrl") or data_obj.get("fileUrl")
+        except Exception:
+            return None
     
     async def _generate_from_local_file(
         self,
@@ -509,6 +557,7 @@ class ImageGenerator:
         prompt: str,
         size: str,
         aspect_ratio: Optional[str] = None,
+        image_input: Optional[List[str]] = None,
     ) -> Optional[bytes]:
         """Сгенерировать одно изображение через Kie.ai и вернуть байты PNG."""
         if not settings.KIE_API_KEY:
@@ -529,7 +578,7 @@ class ImageGenerator:
                 "aspect_ratio": aspect_ratio,
                 "resolution": "1K",
                 "output_format": "png",
-                "image_input": [],
+                "image_input": image_input or [],
             },
         }
 
