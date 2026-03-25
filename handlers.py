@@ -1399,18 +1399,19 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
                 prompt += f"Sticker {i}: include caption '{caption}'\n"
     
     prompt += """
-Technical requirements:
-- The ENTIRE background is SOLID MAGENTA (#FF00FF) - EVERY pixel not part of a sticker must be this color
-- NO dividing lines, NO borders, NO outlines between stickers
-- Stickers are "floating" on a solid magenta background
-- Each sticker is a separate entity surrounded by magenta
-- The magenta background forms a continuous, unbroken sea around all stickers
-- IMPORTANT: Between every two stickers (horizontally and vertically) should be enough space to place another sticker
-- NO shadows, NO gradients on the background
-- Consistent art style across all stickers
-- High quality, suitable for Telegram stickers
-- If captions are specified, they should be clearly visible and integrated into the sticker design
-"""
+    Technical requirements:
+    - The ENTIRE background is SOLID MAGENTA (#FF00FF) - EVERY pixel not part of a sticker must be this color
+    - NO dividing lines, NO borders, NO outlines between stickers
+    - Stickers are "floating" on a solid magenta background
+    - CRITICAL SPACING: Each sticker must have at least 50 pixels of magenta space around it on all sides
+    - Stickers must NOT touch each other - minimum gap of 50 pixels between stickers horizontally and vertically
+    - Stickers must NOT touch the canvas edges - at least 50 pixels margin from all edges
+    - The magenta background forms a continuous, unbroken sea around all stickers
+    - NO shadows, NO gradients on the background
+    - Consistent art style across all stickers
+    - High quality, suitable for Telegram stickers
+    - If captions are specified, they should be clearly visible and integrated into the sticker design
+    """
     
     return prompt
 
