@@ -1400,14 +1400,14 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
     
     prompt += """
 Technical requirements:
-- 3x3 grid layout with equal space between cells
+- The sticker MUST have a PURE MAGENTA background (#FF00FF, RGB: 255,0,255)
+- The background must be EXACTLY RGB(255,0,255) with NO variation
+- NO shadows, NO gradients on the background
+- 3x3 grid layout with equal space between cells (not grid lines, just separate stickers placed on a single canvas)
 - NO dividing lines, NO borders, NO frames between stickers
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
-- The sticker MUST have a PURE MAGENTA background (#FF00FF, RGB: 255,0,255)
-- The background must be EXACTLY RGB(255,0,255) with NO variation
-- NO shadows, NO gradients on the background
 - The sticker itself MUST NOT contain any magenta color
 - The sticker MUST be CENTERED in the image
 - The sticker MUST NOT touch the edges of the image
