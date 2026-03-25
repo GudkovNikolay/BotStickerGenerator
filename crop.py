@@ -136,57 +136,37 @@ def crop_image_to_sticker_content(
     """
     # Если включен режим маджентового фона
     if magenta_bg:
-        # Преобразуем в RGB если нужно
+        tolerance = bg_tolerance
+        # Конвертируем в RGB (на случай если PNG с альфа-каналом)
         if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # Конвертируем в numpy
+        # Превращаем в массив numpy
         img_array = np.array(img)
         
-        # Определяем цвет мадженты
+        # Цвет мадженты
         magenta = np.array([255, 0, 255])
         
-        # Вычисляем расстояние до мадженты
+        # Вычисляем разницу каждого пикселя с маджентой
+        # Простое евклидово расстояние
         diff = np.sqrt(np.sum((img_array - magenta) ** 2, axis=2))
         
-        # Создаем маску: пиксели, которые НЕ маджента
-        mask = (diff > bg_tolerance).astype(np.uint8) * 255
+        # Создаем маску: True для пикселей, которые НЕ маджента
+        # tolerance: чем меньше, тем строже (только точная маджента становится прозрачной)
+        mask = diff > tolerance
         
-        # Морфологическая очистка для удаления шума
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # Создаем RGBA изображение (добавляем альфа-канал)
+        rgba = np.zeros((img_array.shape[0], img_array.shape[1], 4), dtype=np.uint8)
+        rgba[:, :, :3] = img_array  # Копируем RGB каналы
+        rgba[:, :, 3] = mask.astype(np.uint8) * 255  # Альфа-канал: 255 = видимый, 0 = прозрачный
         
-        # Находим самый большой контур (объект)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Превращаем обратно в PIL Image
+        result = Image.fromarray(rgba, mode='RGBA')
         
-        if contours:
-            largest = max(contours, key=cv2.contourArea)
-            
-            # Создаем чистую маску только для объекта
-            clean_mask = np.zeros_like(mask)
-            cv2.drawContours(clean_mask, [largest], -1, 255, -1)
-            
-            # Добавляем альфа-канал
-            rgba = cv2.cvtColor(img_array, cv2.COLOR_RGB2RGBA)
-            rgba[:, :, 3] = clean_mask
-            
-            # Обрезаем по bounding box
-            coords = cv2.findNonZero(clean_mask)
-            if coords is not None:
-                x, y, w, h = cv2.boundingRect(coords)
-                # Добавляем небольшой отступ
-                padding = 0#20
-                x = max(0, x - padding)
-                y = max(0, y - padding)
-                w = min(img_array.shape[1] - x, w + 2 * padding)
-                h = min(img_array.shape[0] - y, h + 2 * padding)
-                rgba = rgba[y:y+h, x:x+w]
-            
-            return Image.fromarray(rgba)
+        # Сохраняем
         
-        # Если не нашли объект, возвращаем оригинал
-        return img
+        return result
+
     
     # Старая логика для обычных случаев
     if rembg_remove is not None:

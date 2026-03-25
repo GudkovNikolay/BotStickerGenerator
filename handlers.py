@@ -1400,7 +1400,8 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
     
     prompt += """
 Technical requirements:
-- 3x3 grid layout with clear separation between cells
+- 3x3 grid layout with equal space between cells
+- NO dividing lines, NO borders, NO frames between stickers
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
