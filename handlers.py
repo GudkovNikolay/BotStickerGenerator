@@ -1400,14 +1400,13 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
     
     prompt += """
 Technical requirements:
-- The sheet MUST have a PURE MAGENTA background (#FF00FF, RGB: 255,0,255)
-- The background must be EXACTLY RGB(255,0,255) with NO variation
+- The ENTIRE background is PURE MAGENTA (#FF00FF). NO dividing lines
+- The stickers itself MUST NOT contain any magenta color
 - NO shadows, NO gradients on the background
-- Background should be plain with nothing else exept stickers 
 - Consistent art style across all stickers
 - High quality, suitable for Telegram stickers
 - If captions are specified, they should be clearly visible and integrated into the sticker design
-- The stickers itself MUST NOT contain any magenta color
+
 """
     
     return prompt
