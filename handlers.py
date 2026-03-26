@@ -67,17 +67,19 @@ async def cmd_start(message: Message, state: FSMContext):
         # Получаем статистику
         stats = await db_service.get_user_stats(user.id)
         
+        # Получаем username бота
+        bot_info = await message.bot.get_me()
+        bot_username = bot_info.username
+        
+        # Формируем ссылку
+        bot_link = f"https://t.me/{bot_username}"
+        
         welcome_text = (
             f"👋 Привет, {message.from_user.first_name or 'друг'}!\n\n"
-            f"Я бот для генерации сеток стикеров по текстовому описанию.\n\n"
-            f"📊 Твоя статистика:\n"
-            f"• Бесплатных генераций: {stats['free_generations_left']}\n"
-            f"• Всего генераций: {stats['total_generations']}\n"
-            f"• Успешных: {stats['completed_generations']}\n"
-            f"• Рефералов: {stats['referrals_count']}\n\n"
-            f"🎁 Твой реферальный код: `{stats['referral_code']}`\n"
-            f"Поделись им с друзьями и получай бонусы!\n\n"
-            f"🧩 Чтобы сразу начать, отправь команду /grid — я создам сетку стикеров и соберу из неё пак."
+            f"Я бот для генерации стикер-паков по текстовому описанию.\n\n"
+            f"🎁 Есть реферальная программа: делись кодом `{stats['referral_code']}`\n"
+            f"Ссылка: `{bot_link}?start={stats['referral_code']}`\n\n"
+            f"🧩 Начни с команды /grid"
         )
         
         await message.answer(welcome_text, parse_mode="Markdown")
@@ -477,11 +479,15 @@ async def cmd_referral(message: Message):
         
         stats = await db_service.get_user_stats(user.id)
         
+        # Получаем username бота правильно
+        bot_info = await message.bot.get_me()
+        bot_username = bot_info.username
+        
         referral_text = (
             f"🎁 Реферальная система\n\n"
             f"Твой реферальный код: `{stats['referral_code']}`\n\n"
             f"Поделись ссылкой с друзьями:\n"
-            f"`https://t.me/{message.bot.username}?start={stats['referral_code']}`\n\n"
+            f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
             f"За каждого друга, который использует твой код, ты получишь:\n"
             f"• +1 бесплатная генерация\n\n"
             f"Всего рефералов: {stats['referrals_count']}"
