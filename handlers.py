@@ -42,6 +42,7 @@ class GenerationStates(StatesGroup):
     confirming_form = State()        # Подтверждение формы
 
 
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     """Обработка команды /start"""
@@ -51,7 +52,6 @@ async def cmd_start(message: Message, state: FSMContext):
     try:
         db_service = DatabaseService(session)
         
-        # Получаем или создаем пользователя
         user = await db_service.get_or_create_user(
             telegram_id=message.from_user.id,
             username=message.from_user.username,
@@ -59,64 +59,46 @@ async def cmd_start(message: Message, state: FSMContext):
             last_name=message.from_user.last_name
         )
         
-        # Проверяем реферальный код в аргументах
         if len(message.text.split()) > 1:
             referral_code = message.text.split()[1]
             await db_service.process_referral(referral_code, user.id)
         
-        # Получаем статистику
         stats = await db_service.get_user_stats(user.id)
         
         # Получаем username бота
         bot_info = await message.bot.get_me()
         bot_username = bot_info.username
         
-        # Формируем ссылку
-        bot_link = f"https://t.me/{bot_username}"
+        # Формируем текст для поделиться
+        referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
+        share_text = f"🎁 Присоединяйся ко мне! Используй мою реферальную ссылку: {referral_link}"
         
         welcome_text = (
             f"👋 Привет, {message.from_user.first_name or 'друг'}!\n\n"
             f"Я бот для генерации стикер-паков по текстовому описанию.\n\n"
-            f"🎁 Есть реферальная программа: делись кодом `{stats['referral_code']}`\n"
-            f"Ссылка: `{bot_link}?start={stats['referral_code']}`\n\n"
+            f"🎁 Есть реферальная программа!\n"
+            f"Приведи друга и получи скидку.\n\n"
             f"🧩 Начни с команды /grid"
         )
         
-        await message.answer(welcome_text, parse_mode="Markdown")
+        # Кнопка для поделиться с предзаполненным текстом
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="🔗 Поделиться ссылкой",
+                switch_inline_query=share_text  # Будет открыто окно выбора чата с этим текстом
+            )],
+        ])
+        
+        await message.answer(
+            welcome_text, 
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
     finally:
         await session.close()
 
+        
 
-# @router.message(Command("grid"))
-# async def cmd_grid(message: Message, state: FSMContext):
-#     """Обработка команды /grid — старт генерации сетки стикеров"""
-#     session = await get_session()
-#     try:
-#         db_service = DatabaseService(session)
-        
-#         user = await db_service.get_or_create_user(
-#             telegram_id=message.from_user.id,
-#             username=message.from_user.username,
-#             first_name=message.from_user.first_name
-#         )
-        
-#         stats = await db_service.get_user_stats(user.id)
-        
-#         if stats['free_generations_left'] > 0 or stats['is_premium']:
-#             await message.answer(
-#                 "✍️ Отправь текстовое описание для сетки стикеров.\n\n"
-#                 "Например: 'Кот в космосе' или 'Смайлик с пиццей'"
-#             )
-#             await state.set_state(GenerationStates.waiting_for_prompt)
-#             # Убеждаемся, что тестовый режим выключен
-#             await state.update_data(test_mode=False)
-#         else:
-#             await message.answer(
-#                 "❌ У тебя закончились бесплатные генерации.\n\n"
-#                 "Используй /buy чтобы купить пак генераций."
-#             )
-#     finally:
-#         await session.close()
 
 
 @router.message(Command("test_generate"))
@@ -485,7 +467,7 @@ async def cmd_referral(message: Message):
         
         referral_text = (
             f"🎁 Реферальная система\n\n"
-            f"Твой реферальный код: `{stats['referral_code']}`\n\n"
+
             f"Поделись ссылкой с друзьями:\n"
             f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
             f"За каждого друга, который использует твой код, ты получишь:\n"
