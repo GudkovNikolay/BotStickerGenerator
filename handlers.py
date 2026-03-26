@@ -71,14 +71,16 @@ async def cmd_start(message: Message, state: FSMContext):
         
         # Формируем текст для поделиться
         referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
-        share_text = f"🎁 Присоединяйся ко мне! Используй мою реферальную ссылку: {referral_link}"
+        share_text = f"@StickerpackGeneration_bot - бот для генерации стикер-паков по текстовому описанию."
+        f"Используй мою реферальную ссылку и получи ссылку 50% на первый стикер-пак: {referral_link}"
         
         welcome_text = (
-            f"👋 Привет, {message.from_user.first_name or 'друг'}!\n\n"
-            f"Я бот для генерации стикер-паков по текстовому описанию.\n\n"
-            f"🎁 Есть реферальная программа!\n"
-            f"Приведи друга и получи скидку.\n\n"
-            f"🧩 Начни с команды /grid"
+            f"Привет!\n\n"
+            f"Это бот для генерации стикер-паков по текстовому описанию.\n\n"
+            f"Расскажи о боте друзьям, чтобы получить скидку!\n"
+            f"Если друг перейдет по твоей ссылке (кнопка внизу), и ты и он получите скидку 50% на стикер-пак.\n\n"
+            f"Приведи несколько друзей, за каждого нового друга ты получаешь ещё один стикер-пак со скидкой 50%! :) \n\n"
+            f"Сгенерируй свой первый пак с помощью команды /generate"
         )
         
         # Кнопка для поделиться с предзаполненным текстом
@@ -97,329 +99,6 @@ async def cmd_start(message: Message, state: FSMContext):
     finally:
         await session.close()
 
-        
-
-
-
-@router.message(Command("test_generate"))
-async def cmd_test_generate(message: Message, state: FSMContext):
-    """Тестовая команда для ускоренной генерации (белый шум)"""
-    # Проверяем, что пользователь администратор (если нужно)
-    # if message.from_user.id not in settings.ADMIN_IDS:
-    #     await message.answer("❌ У вас нет прав для использования этой команды")
-    #     return
-    
-    await message.answer(
-        "🧪 Тестовый режим активирован.\n"
-        "✍️ Отправь текстовое описание (будет сгенерирован белый шум)"
-    )
-    await state.set_state(GenerationStates.waiting_for_prompt)
-    # Сохраняем флаг тестового режима
-    await state.update_data(test_mode=True)
-
-
-async def generate_test_images(count: int = 5) -> list:
-    """
-    Генерирует тестовые изображения (белый шум)
-    Возвращает список путей к временным файлам
-    """
-    images = []
-    
-    # Создаем временную директорию для тестовых изображений
-    temp_dir = settings.TEMP_DIR
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    logger.info(f"Генерация {count} тестовых изображений в {temp_dir}")
-    
-    for i in range(count):
-        try:
-            # Создаем изображение с белым шумом (RGB)
-            img_array = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
-            img = Image.fromarray(img_array)
-            
-            # Сохраняем во временный файл
-            temp_path = temp_dir / f"test_image_{i}_{int(asyncio.get_event_loop().time() * 1000)}.png"
-            img.save(temp_path, format="PNG")
-            
-            # Проверяем, что файл создан и не пустой
-            if temp_path.exists() and temp_path.stat().st_size > 0:
-                images.append(str(temp_path))
-                logger.info(f"Тестовое изображение сохранено: {temp_path}, размер: {temp_path.stat().st_size} байт")
-            else:
-                logger.error(f"Файл не создан или пустой: {temp_path}")
-                
-        except Exception as e:
-            logger.error(f"Ошибка при создании тестового изображения {i}: {e}")
-            continue
-    
-    logger.info(f"Сгенерировано {len(images)} тестовых изображений")
-    return images
-
-
-@router.message(GenerationStates.waiting_for_prompt)
-async def process_prompt(message: Message, state: FSMContext):
-    """Обработка промпта от пользователя"""
-    prompt = message.text
-    
-    if not prompt or len(prompt) < 3:
-        await message.answer("❌ Промпт слишком короткий. Попробуй еще раз.")
-        return
-    
-    if len(prompt) > 500:
-        await message.answer("❌ Промпт слишком длинный (максимум 500 символов).")
-        return
-    
-    # Получаем данные состояния
-    state_data = await state.get_data()
-    test_mode = state_data.get('test_mode', False)
-    
-    status_msg = None
-    if test_mode:
-        await message.answer("🧪 Тестовый режим: генерирую белый шум...")
-    else:
-        # Отправляем сообщение о начале генерации
-        status_msg = await message.answer("⏳ Генерирую изображения... Это может занять некоторое время.")
-    
-    session = await get_session()
-    try:
-        db_service = DatabaseService(session)
-        
-        user = await db_service.get_or_create_user(
-            telegram_id=message.from_user.id
-        )
-        
-        # В тестовом режиме пропускаем проверку лимитов
-        if not test_mode:
-            # Используем бесплатную генерацию
-            can_generate = await db_service.use_free_generation(user.id)
-            
-            if not can_generate and not (await db_service.get_user_stats(user.id))['is_premium']:
-                await status_msg.edit_text("❌ У тебя закончились бесплатные генерации.")
-                await state.clear()
-                return
-        
-        # Создаем запись о генерации
-        generation = await db_service.create_generation(user.id, prompt)
-        
-        try:
-            if test_mode:
-                # Тестовая генерация - белый шум
-                logger.info("Запуск тестовой генерации")
-                await asyncio.sleep(1)  # Имитация задержки
-                images = await generate_test_images(count=5)
-                logger.info(f"Тестовая генерация завершена, получено {len(images)} изображений")
-                
-                if not images:
-                    raise Exception("Не удалось сгенерировать тестовые изображения")
-                
-                if status_msg:
-                    await status_msg.edit_text("🧪 Тестовые изображения сгенерированы")
-            else:
-                # Реальная генерация
-                image_generator = ImageGenerator()
-                images = await image_generator.generate_images(
-                    prompt,
-                    count=0,
-                    grid_rows=settings.STICKER_GRID_ROWS,
-                    grid_cols=settings.STICKER_GRID_COLS,
-                )
-                
-                if not images:
-                    raise Exception("Не удалось сгенерировать изображения")
-                
-                await status_msg.edit_text("🎨 Обрабатываю изображения в стикеры...")
-            
-            # Проверяем, что images - это список путей
-            logger.info(f"Получено {len(images)} изображений для обработки")
-            for i, img_path in enumerate(images):
-                logger.info(f"Изображение {i}: {img_path}")
-                if not os.path.exists(img_path):
-                    logger.error(f"Файл не существует: {img_path}")
-                elif os.path.getsize(img_path) == 0:
-                    logger.error(f"Файл пустой: {img_path}")
-            
-            # Обрабатываем в стикеры
-            sticker_processor = StickerProcessor()
-            output_dir = settings.STICKERS_DIR / f"pack_{generation.id}"
-            stickers = await sticker_processor.process_to_stickers(images, output_dir)
-            
-            logger.info(f"Обработано стикеров: {len(stickers) if stickers else 0}")
-            
-            if not stickers:
-                raise Exception("Не удалось обработать изображения в стикеры")
-            
-            # Проверяем созданные стикеры
-            for i, sticker_path in enumerate(stickers):
-                logger.info(f"Стикер {i}: {sticker_path}")
-                if not os.path.exists(sticker_path):
-                    logger.error(f"Стикер не существует: {sticker_path}")
-                elif os.path.getsize(sticker_path) == 0:
-                    logger.error(f"Стикер пустой: {sticker_path}")
-            
-            # Отправляем стикеры пользователю
-            if not test_mode and status_msg:
-                await status_msg.edit_text(f"✅ Готово! Создаю стикер-пак из {len(stickers)} стикеров...")
-            else:
-                await message.answer(f"🧪 Готово! Создаю стикер-пак из {len(stickers)} тестовых стикеров...")
-            
-    # Создаем стикер-пак с правильным именем
-            import time
-            import re
-            import hashlib
-            
-            # Получаем username бота (без @)
-            bot_info = await message.bot.me()
-            bot_username = bot_info.username
-            # bot_username = message.bot.username
-            if bot_username.startswith('@'):
-                bot_username = bot_username[1:]
-            
-            # Очищаем промпт для использования в имени
-            # Берем первые 20 символов промпта, удаляем недопустимые символы
-            clean_prompt = re.sub(r'[^a-zA-Z0-9]', '', prompt[:20].lower())
-            if not clean_prompt:  # Если после очистки ничего не осталось
-                clean_prompt = "sticker"
-            
-            # Создаем уникальный хеш на основе времени и ID генерации
-            unique_hash = hashlib.md5(f"{user.telegram_id}_{generation.id}_{time.time()}".encode()).hexdigest()[:8]
-            
-            # Формируем базовое имя: начинается с буквы, содержит только допустимые символы
-            base_name = f"{clean_prompt}_{unique_hash}"
-            
-            # Убеждаемся, что имя начинается с буквы
-            if base_name[0].isdigit():
-                base_name = "s" + base_name
-            
-            # Добавляем обязательный суффикс _by_<bot_username>
-            pack_name = f"{base_name}_by_{bot_username}"
-            
-            # Обрезаем до максимальной длины (64 символа)
-            if len(pack_name) > 64:
-                # Если слишком длинное, укорачиваем base_name
-                max_base_len = 64 - len(f"_by_{bot_username}")
-                base_name = base_name[:max_base_len]
-                pack_name = f"{base_name}_by_{bot_username}"
-            
-            # Проверяем на последовательные подчеркивания
-            while '__' in pack_name:
-                pack_name = pack_name.replace('__', '_')
-            
-            pack_title = f"Стикеры: {prompt[:30]}..."
-            
-            logger.info(f"Создание стикер-пака с именем: {pack_name}")
-            
-            # Подготавливаем стикеры для загрузки
-            input_stickers = []
-            for i, sticker_path in enumerate(stickers):
-                try:
-                    if not os.path.exists(sticker_path) or os.path.getsize(sticker_path) == 0:
-                        logger.error(f"Файл не существует или пустой: {sticker_path}")
-                        continue
-                    
-                    sticker_file = FSInputFile(sticker_path)
-                    
-                    # Для разных стикеров можно использовать разные эмодзи
-                    # Здесь можно добавить логику выбора эмодзи на основе содержимого
-                    emoji_list = ["🤖"]  # Эмодзи по умолчанию
-                    
-                    input_sticker = InputSticker(
-                        sticker=sticker_file,
-                        format="static",
-                        emoji_list=emoji_list
-                    )
-                    input_stickers.append(input_sticker)
-                    logger.info(f"Стикер {i} подготовлен для загрузки: {sticker_path}")
-                    
-                except Exception as e:
-                    logger.error(f"Ошибка подготовки стикера {sticker_path}: {e}", exc_info=True)
-                    continue
-            
-            logger.info(f"Подготовлено {len(input_stickers)} стикеров для загрузки")
-            
-            if input_stickers:
-                try:
-                    result = await message.bot.create_new_sticker_set(
-                        user_id=message.from_user.id,
-                        name=pack_name,
-                        title=pack_title,
-                        stickers=input_stickers,
-                        sticker_format="static"
-                    )
-                    
-                    if result:
-                        pack_link = f"https://t.me/addstickers/{pack_name}"
-                        
-                        success_text = f"✅ Стикер-пак успешно создан!\n\n📦 Название: {pack_title}\n🔗 Ссылка: {pack_link}\n\nКоличество стикеров: {len(input_stickers)}"
-                        
-                        if test_mode:
-                            await message.answer(f"🧪 Тестовый режим: {success_text}")
-                        else:
-                            await status_msg.edit_text(success_text)
-                        
-                        await db_service.update_generation(
-                            generation.id,
-                            status="completed",
-                            images_count=len(input_stickers),
-                            sticker_pack_name=pack_name
-                        )
-                        
-                        logger.info(f"Стикер-пак {pack_name} успешно создан")
-                    else:
-                        raise Exception("Не удалось создать стикер-пак")
-                        
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.error(f"Ошибка создания стикер-пака: {error_msg}", exc_info=True)
-                    
-                    # Анализируем ошибку
-                    if "PACK_SHORT_NAME_INVALID" in error_msg:
-                        error_text = f"❌ Неверный формат имени пака. Имя должно заканчиваться на '_by_{bot_username}'"
-                    elif "PACK_SHORT_NAME_OCCUPIED" in error_msg:
-                        error_text = "❌ Пак с таким именем уже существует. Попробуйте еще раз (имя генерируется автоматически)"
-                    else:
-                        error_text = f"⚠️ Ошибка создания стикер-пака: {error_msg}\n\nОтправляю стикеры по отдельности:"
-                    
-                    if test_mode:
-                        await message.answer(error_text)
-                    else:
-                        await status_msg.edit_text(error_text)
-                    
-                    # Отправляем стикеры по отдельности
-                    for sticker_path in stickers:
-                        try:
-                            if os.path.exists(sticker_path) and os.path.getsize(sticker_path) > 0:
-                                sticker_file = FSInputFile(sticker_path)
-                                await message.answer_sticker(sticker_file)
-                                await asyncio.sleep(0.3)
-                        except Exception as send_error:
-                            logger.error(f"Ошибка отправки стикера: {send_error}")
-            else:
-                raise Exception("Нет валидных стикеров для создания пака")
-    
-            
-        except Exception as e:
-            logger.error(f"Ошибка генерации: {e}", exc_info=True)
-            await db_service.update_generation(
-                generation.id,
-                status="failed",
-                error_message=str(e)
-            )
-            error_msg = f"❌ Произошла ошибка при генерации"
-            if test_mode:
-                error_msg = f"🧪 {error_msg} (тестовый режим)"
-            error_msg += f": {str(e)}\n\nПопробуй еще раз или обратись в поддержку."
-            
-            if not test_mode and status_msg:
-                await status_msg.edit_text(error_msg)
-            else:
-                await message.answer(error_msg)
-        
-        finally:
-            await state.clear()
-    finally:
-        await session.close()
-
-
 @router.message(Command("stats"))
 async def cmd_stats(message: Message):
     """Показать статистику пользователя"""
@@ -433,13 +112,15 @@ async def cmd_stats(message: Message):
         
         stats = await db_service.get_user_stats(user.id)
         
+        referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
+
         stats_text = (
             f"📊 Твоя статистика:\n\n"
-            f"🎁 Бесплатных генераций: {stats['free_generations_left']}\n"
+            # f"🎁 Бесплатных генераций: {stats['free_generations_left']}\n"
             f"📦 Всего генераций: {stats['total_generations']}\n"
             f"✅ Успешных: {stats['completed_generations']}\n"
             f"👥 Рефералов: {stats['referrals_count']}\n"
-            f"🎫 Реферальный код: `{stats['referral_code']}`\n"
+            f"🎫 Реферальная ссылка: `{referral_link}`\n"
             f"{'⭐ Premium статус: активен' if stats['is_premium'] else ''}"
         )
         
@@ -470,9 +151,9 @@ async def cmd_referral(message: Message):
 
             f"Поделись ссылкой с друзьями:\n"
             f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
-            f"За каждого друга, который использует твой код, ты получишь:\n"
-            f"• +1 бесплатная генерация\n\n"
-            f"Всего рефералов: {stats['referrals_count']}"
+            f"За каждого друга, который использует твой код, и ты и он получите скидку 50% на стикерпак\n\n"
+            # f"• +1 бесплатная генерация\n\n"
+            # f"Всего рефералов: {stats['referrals_count']}"
         )
         
         await message.answer(referral_text, parse_mode="Markdown")
@@ -483,19 +164,49 @@ async def cmd_referral(message: Message):
 @router.message(Command("buy"))
 async def cmd_buy(message: Message, state: FSMContext):
     """Выбор способа оплаты"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"💳 Банковская карта ({settings.STICKER_PACK_PRICE} руб)", callback_data="pay_card")],
-        [InlineKeyboardButton(text=f"⭐ Звезды Telegram ({settings.STICKER_PACK_STARS_PRICE})", callback_data="pay_stars")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="cancel")]
-    ])
-    
-    await message.answer(
-        f"💳 Выберите способ оплаты\n\n"
-        f"Пакет: {settings.STICKER_PACK_COUNT} генераций\n"
-        f"Цена: {settings.STICKER_PACK_PRICE} ₽ или {settings.STICKER_PACK_STARS_PRICE} ⭐",
-        reply_markup=keyboard
-    )
-    await state.set_state(GenerationStates.waiting_for_payment_method)
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        
+        user = await db_service.get_or_create_user(
+            telegram_id=message.from_user.id
+        )
+        
+        # Получаем информацию о скидке
+        discount = await db_service.get_user_discount(user.id)
+        
+        original_price = settings.STICKER_PACK_PRICE
+        final_price = original_price
+        
+        if discount['has_discount']:
+            final_price = original_price * (100 - discount['discount_percent']) / 100
+            discount_text = (
+                f"\n\n🎉 *У вас скидка {discount['discount_percent']}%!*\n"
+                f"Причина: {discount['reason']}\n"
+                f"Цена со скидкой: {final_price:.0f} ₽"
+            )
+        else:
+            discount_text = "\n\n🎁 *Приведи друга и получи скидку 50%!*\nИспользуй /referral"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"💳 Оплатить {final_price:.0f} ₽", 
+                callback_data=f"pay_card_{final_price}"
+            )],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="cancel")]
+        ])
+        
+        await message.answer(
+            f"💳 *Оплата*\n\n"
+            f"Пакет: {settings.STICKER_PACK_COUNT} генераций\n"
+            f"Цена: {original_price} ₽{discount_text}",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        await state.set_state(GenerationStates.waiting_for_payment_method)
+        
+    finally:
+        await session.close()
 
 
 @router.message(Command("help"))
@@ -515,11 +226,14 @@ async def cmd_help(message: Message):
     
     await message.answer(help_text)
 
-@router.callback_query(lambda c: c.data == "pay_card")
+@router.callback_query(lambda c: c.data.startswith('pay_card_'))
 async def process_card_payment(callback: CallbackQuery, state: FSMContext):
-    """Обработка оплаты картой"""
-    # Создание счета через провайдера
-    prices = [LabeledPrice(label="Пакет генераций", amount=settings.STICKER_PACK_PRICE * 100)]  # в копейках
+    """Обработка оплаты картой с учетом скидки"""
+    # Извлекаем цену из callback_data
+    final_price = float(callback.data.split('_')[2])
+    
+    # Создание счета
+    prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
     
     await callback.message.bot.send_invoice(
         chat_id=callback.message.chat.id,

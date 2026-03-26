@@ -188,3 +188,47 @@ class DatabaseService:
             "is_premium": user.is_premium
         }
 
+# В db_service.py
+
+    async def get_user_discount(self, user_id: int) -> dict:
+        """
+        Возвращает информацию о скидке пользователя
+        """
+        # Получаем пользователя
+        user = await self.get_user_by_id(user_id)
+        if not user:
+            return {'has_discount': False, 'discount_percent': 0}
+        
+        # Проверяем, есть ли активные реферальные бонусы
+        # Вариант 1: Скидка за рефералов (50%)
+        referrals_count = await self.get_referrals_count(user_id)
+        
+        if referrals_count > 0:
+            return {
+                'has_discount': True,
+                'discount_percent': 50,
+                'reason': f'Привел {referrals_count} друзей',
+                'original_price': settings.STICKER_PACK_PRICE,
+                'final_price': settings.STICKER_PACK_PRICE * 0.5
+            }
+        
+        # Вариант 2: Скидка если сам перешел по реферальной ссылке
+        # (нужно поле в таблице users: referred_by)
+        if user.referred_by:
+            return {
+                'has_discount': True,
+                'discount_percent': 50,
+                'reason': 'Пришел по реферальной ссылке',
+                'original_price': settings.STICKER_PACK_PRICE,
+                'final_price': settings.STICKER_PACK_PRICE * 0.5
+            }
+        
+        return {'has_discount': False, 'discount_percent': 0}
+
+
+    async def get_referrals_count(self, user_id: int) -> int:
+        """Возвращает количество рефералов пользователя"""
+        # Запрос к таблице referrals
+        query = "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1"
+        result = await self.conn.fetchval(query, user_id)
+        return result or 0
