@@ -905,7 +905,9 @@ async def grid_show_preview(callback: CallbackQuery, state: FSMContext):
     ])
     
     await callback.message.edit_text(preview, reply_markup=keyboard, parse_mode="Markdown")
-    await callback.answer()@router.callback_query(lambda c: c.data == "grid_generate")
+    await callback.answer()
+    
+@router.callback_query(lambda c: c.data == "grid_generate")
 async def grid_generate(callback: CallbackQuery, state: FSMContext):
     """Генерация стикерпака из сетки"""
     logger.info(f"=== НАЧАЛО ГЕНЕРАЦИИ для пользователя {callback.from_user.id} === 1")
