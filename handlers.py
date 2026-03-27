@@ -905,10 +905,7 @@ async def grid_show_preview(callback: CallbackQuery, state: FSMContext):
     ])
     
     await callback.message.edit_text(preview, reply_markup=keyboard, parse_mode="Markdown")
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == "grid_generate")
+    await callback.answer()@router.callback_query(lambda c: c.data == "grid_generate")
 async def grid_generate(callback: CallbackQuery, state: FSMContext):
     """Генерация стикерпака из сетки"""
     
@@ -939,7 +936,14 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
             
             if paid_generations <= 0:
                 # Нет доступных генераций - показываем экран оплаты
-                await show_payment_screen(callback.message, state, grid, status_message)
+                # Передаем все необходимые данные
+                await show_payment_screen(
+                    callback.message, 
+                    state, 
+                    grid, 
+                    status_message,
+                    data.get('reference_photo_path')  # Передаем путь к референсному фото
+                )
                 return
             
             # Есть платные генерации - используем одну
@@ -1009,14 +1013,14 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def show_payment_screen(message: Message, state: FSMContext, grid: StickerGrid, status_message: Message):
+async def show_payment_screen(message: Message, state: FSMContext, grid: StickerGrid, status_message: Message, reference_photo_path: str = None):
     """Показывает экран оплаты"""
     
     # Сохраняем данные сетки в состояние для последующей генерации
     await state.update_data(
         pending_generation=True,
         pending_grid=grid.to_dict(),
-        pending_reference_photo=data.get("reference_photo_path")
+        pending_reference_photo=reference_photo_path
     )
     
     session = await get_session()
@@ -1488,7 +1492,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
             )
     finally:
         await session.close()
-        
+
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
