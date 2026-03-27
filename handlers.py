@@ -27,7 +27,7 @@ from aiogram import F
 from typing import Dict, Any, List
 import re
 import httpx
-
+from emoji_manager import EmojiManager
 logger = logging.getLogger(__name__)
 
 router = Router()
@@ -77,7 +77,7 @@ async def cmd_start(message: Message, state: FSMContext):
         welcome_text = (
             f"Привет!\n\n"
             f"Это бот для генерации стикер-паков по текстовому описанию.\n\n"
-            f"Расскажи о боте друзьям, чтобы получить скидку!\n"
+            f"Расскажи о боте друзьям, чтобы получить скидку!\n\n"
             f"Если друг перейдет по твоей ссылке (кнопка внизу), и ты и он получите скидку 50% на стикер-пак.\n\n"
             f"Приведи несколько друзей, за каждого нового друга ты получаешь ещё один стикер-пак со скидкой 50%! :) \n\n"
             f"Сгенерируй свой первый пак с помощью команды /generate"
@@ -111,7 +111,10 @@ async def cmd_stats(message: Message):
         )
         
         stats = await db_service.get_user_stats(user.id)
-        
+        # Получаем username бота
+        bot_info = await message.bot.get_me()
+        bot_username = bot_info.username
+
         referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
 
         stats_text = (
@@ -121,7 +124,7 @@ async def cmd_stats(message: Message):
             f"✅ Успешных: {stats['completed_generations']}\n"
             f"👥 Рефералов: {stats['referrals_count']}\n"
             f"🎫 Реферальная ссылка: `{referral_link}`\n"
-            f"{'⭐ Premium статус: активен' if stats['is_premium'] else ''}"
+            # f"{'⭐ Premium статус: активен' if stats['is_premium'] else ''}"
         )
         
         await message.answer(stats_text, parse_mode="Markdown")
@@ -215,13 +218,11 @@ async def cmd_help(message: Message):
     help_text = (
         "📖 Справка по командам:\n\n"
         "/start - Начать работу с ботом\n"
-        "/grid - Создать сетку стикеров по текстовому описанию\n"
+        "/generate - Создать стикер-пак\n"
         "/stats - Показать статистику\n"
         "/referral - Реферальная система\n"
         "/buy - Купить генерации\n"
         "/help - Эта справка\n"
-        "/test_generate - (Тест) Быстрая генерация с белым шумом\n\n"
-        "💡 После генерации сетка автоматически режется на стикеры и собирается в стикер-пак!"
     )
     
     await message.answer(help_text)
@@ -311,8 +312,8 @@ async def successful_payment_handler(message: Message):
         
         await message.answer(
             f"✅ Оплата прошла успешно!\n\n"
-            f"Вам добавлено {generations_to_add} генераций.\n"
-            f"Используйте /grid для создания сетки стикеров!"
+            f"Теперь можно перейти к генерации.\n"
+            f"Используйте /generate для создания вашего пака!"
         )
     finally:
         await session.close()
@@ -348,12 +349,13 @@ class StickerGridStates(StatesGroup):
     waiting_for_emoji = State()
     confirming = State()
     waiting_for_reference_photo = State()
+    waiting_for_emoji_input = State()
 
 class StickerGrid:
     """Класс для управления сеткой стикеров"""
     
     def __init__(self, total_stickers: int = 5):
-        self.theme = "Не выбрана"
+        self.theme = None#"Не выбрана"
         self.stickers = []
         self.total_stickers = total_stickers
         self.current_editing = 0
@@ -363,7 +365,7 @@ class StickerGrid:
             self.stickers.append({
                 'description': '',  # Пустое описание по умолчанию
                 'caption': '',
-                'emoji': '🖼️'
+                'emoji': EmojiManager.get_random_emoji()  # Случайный эмодзи
             })
     
     def to_dict(self):
@@ -400,7 +402,7 @@ class StickerGrid:
     
     def get_grid_display(self) -> str:
         """Возвращает отображение всей сетки"""
-        display = f"📋 **Текущая сетка стикеров**\n"
+        display = f"📋 **Текущее состояние стикеров**\n"
         display += f"📌 **Тема:** {self.theme}\n\n"
         display += "💡 *Описания можно не заполнять - тогда стикеры будут на общую тему*\n\n"
         
@@ -412,8 +414,8 @@ class StickerGrid:
                     idx = i + j
                     sticker = self.stickers[idx]
                     # Показываем эмодзи и индикатор заполненности
-                    indicator = "✅" if sticker['description'] else "⬜"
-                    row.append(f"[{idx+1}] {sticker['emoji']}{indicator}")
+                    # indicator = "✅" if sticker['description'] else "⬜"
+                    row.append(f"[{idx+1}] {sticker['emoji']}")
                 else:
                     row.append("[ ]")
             display += " | ".join(row) + "\n"
@@ -425,15 +427,15 @@ class StickerGrid:
             if sticker['description']:
                 display += f"\n**{i+1}.** {sticker['emoji']} *{sticker['description']}*"
             else:
-                display += f"\n**{i+1}.** {sticker['emoji']} *[будет на тему {self.theme}]*"
+                display += f"\n**{i+1}.** {sticker['emoji']} *будет на общую тему*"
             if sticker['caption']:
-                display += f"\n    💬 {sticker['caption']}"
+                display += f"\n    💬 Надпись на стикере: {sticker['caption']}"
         
         return display
 
 
 # Найдите и замените существующий обработчик команды /grid
-@router.message(Command("grid"))
+@router.message(Command("generate"))
 async def cmd_start_grid(message: Message, state: FSMContext):
     """Запуск создания стикерпака через сетку из 9 стикеров"""
     
@@ -473,7 +475,7 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
     data = await state.get_data()
     has_reference_photo = bool(data.get("reference_photo_path"))
     display = grid.get_grid_display()
-    display += f"\n\n📷 Референс фото: {'✅' if has_reference_photo else '⬜'}"
+    display += f"\n\n📷 Референс фото {'загружено' if has_reference_photo else 'не загружено'}"
     
     # Создаем клавиатуру с кнопками для каждого стикера
     keyboard_buttons = []
@@ -486,9 +488,9 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
                 idx = i + j
                 sticker = grid.stickers[idx]
                 # Показываем эмодзи и статус в кнопке
-                status = "✅" if sticker['description'] else "⬜"
+                # status = "✅" if sticker['description'] else "⬜"
                 row.append(InlineKeyboardButton(
-                    text=f"{idx+1}. {sticker['emoji']}{status}",
+                    text=f"{idx+1}. {sticker['emoji']}",
                     callback_data=f"grid_edit_{idx}"
                 ))
         if row:
@@ -514,7 +516,7 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    action = "Редактирование" if edit else "Текущая сетка"
+    action = "Редактирование" if edit else "Текущее состояние"
     
     # Проверяем, можем ли мы редактировать сообщение
     try:
@@ -542,18 +544,18 @@ async def grid_reference_photo(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             "📷 Отправь референсное фото (желательно с лицом/персонажем).\n\n"
             "После загрузки я буду просить Kie.ai сделать все стикеры с этим персонажем.\n\n"
-            "Можно отменить: нажми «◀️ Назад к сетке».",
+            "Можно отменить: нажми «◀️ Назад ко всем стикерам».",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="grid_reference_back")]]
+                inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад ко всем стикерам", callback_data="grid_reference_back")]]
             ),
         )
     except Exception:
         await callback.message.answer(
             "📷 Отправь референсное фото (желательно с лицом/персонажем).\n\n"
             "После загрузки я буду просить Kie.ai сделать все стикеры с этим персонажем.\n\n"
-            "Можно отменить: нажми «◀️ Назад к сетке».",
+            "Можно отменить: нажми «◀️ Назад ко всем стикерам».",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="grid_reference_back")]]
+                inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад ко всем стикерам", callback_data="grid_reference_back")]]
             ),
         )
 
@@ -695,7 +697,7 @@ async def grid_edit_sticker(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text=f"◀️ Предыдущий (#{prev_idx+1})", callback_data=f"grid_edit_{prev_idx}"),
             InlineKeyboardButton(text=f"Следующий (#{next_idx+1}) ▶️", callback_data=f"grid_edit_{next_idx}")
         ],
-        [InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="sticker_back")]
+        [InlineKeyboardButton(text="◀️ Назад ко всем стикерам", callback_data="sticker_back")]
     ])
     
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -791,74 +793,74 @@ async def process_sticker_caption(message: Message, state: FSMContext):
     await show_sticker_edit_menu(message, state, grid, idx)
 
 
-@router.callback_query(lambda c: c.data == "sticker_edit_emoji")
-async def sticker_edit_emoji(callback: CallbackQuery, state: FSMContext):
-    """Выбор эмодзи для стикера"""
+# @router.callback_query(lambda c: c.data == "sticker_edit_emoji")
+# async def sticker_edit_emoji(callback: CallbackQuery, state: FSMContext):
+#     """Выбор эмодзи для стикера"""
     
-    data = await state.get_data()
-    grid = StickerGrid.from_dict(data.get('grid'))
-    idx = grid.current_editing
+#     data = await state.get_data()
+#     grid = StickerGrid.from_dict(data.get('grid'))
+#     idx = grid.current_editing
     
-    # Клавиатура с популярными эмодзи
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="😺", callback_data="emoji_cat"),
-            InlineKeyboardButton(text="🐶", callback_data="emoji_dog"),
-            InlineKeyboardButton(text="🐼", callback_data="emoji_panda"),
-            InlineKeyboardButton(text="🦊", callback_data="emoji_fox")
-        ],
-        [
-            InlineKeyboardButton(text="❤️", callback_data="emoji_heart"),
-            InlineKeyboardButton(text="⭐", callback_data="emoji_star"),
-            InlineKeyboardButton(text="🎨", callback_data="emoji_art"),
-            InlineKeyboardButton(text="🚀", callback_data="emoji_rocket")
-        ],
-        [
-            InlineKeyboardButton(text="😊", callback_data="emoji_smile"),
-            InlineKeyboardButton(text="😂", callback_data="emoji_laugh"),
-            InlineKeyboardButton(text="😢", callback_data="emoji_sad"),
-            InlineKeyboardButton(text="😠", callback_data="emoji_angry")
-        ],
-        [
-            InlineKeyboardButton(text="🍕", callback_data="emoji_pizza"),
-            InlineKeyboardButton(text="🍔", callback_data="emoji_burger"),
-            InlineKeyboardButton(text="☕", callback_data="emoji_coffee"),
-            InlineKeyboardButton(text="🎂", callback_data="emoji_cake")
-        ],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="sticker_back")]
-    ])
+#     # Клавиатура с популярными эмодзи
+#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+#         [
+#             InlineKeyboardButton(text="😺", callback_data="emoji_cat"),
+#             InlineKeyboardButton(text="🐶", callback_data="emoji_dog"),
+#             InlineKeyboardButton(text="🐼", callback_data="emoji_panda"),
+#             InlineKeyboardButton(text="🦊", callback_data="emoji_fox")
+#         ],
+#         [
+#             InlineKeyboardButton(text="❤️", callback_data="emoji_heart"),
+#             InlineKeyboardButton(text="⭐", callback_data="emoji_star"),
+#             InlineKeyboardButton(text="🎨", callback_data="emoji_art"),
+#             InlineKeyboardButton(text="🚀", callback_data="emoji_rocket")
+#         ],
+#         [
+#             InlineKeyboardButton(text="😊", callback_data="emoji_smile"),
+#             InlineKeyboardButton(text="😂", callback_data="emoji_laugh"),
+#             InlineKeyboardButton(text="😢", callback_data="emoji_sad"),
+#             InlineKeyboardButton(text="😠", callback_data="emoji_angry")
+#         ],
+#         [
+#             InlineKeyboardButton(text="🍕", callback_data="emoji_pizza"),
+#             InlineKeyboardButton(text="🍔", callback_data="emoji_burger"),
+#             InlineKeyboardButton(text="☕", callback_data="emoji_coffee"),
+#             InlineKeyboardButton(text="🎂", callback_data="emoji_cake")
+#         ],
+#         [InlineKeyboardButton(text="◀️ Назад", callback_data="sticker_back")]
+#     ])
     
-    await callback.message.edit_text(
-        f"😊 **Выберите эмодзи для стикера #{idx + 1}**\n\n"
-        f"Текущий эмодзи: {grid.stickers[idx]['emoji']}",
-        reply_markup=keyboard
-    )
-    await state.set_state(StickerGridStates.waiting_for_emoji)
-    await callback.answer()
+#     await callback.message.edit_text(
+#         f"😊 **Выберите эмодзи для стикера #{idx + 1}**\n\n"
+#         f"Текущий эмодзи: {grid.stickers[idx]['emoji']}",
+#         reply_markup=keyboard
+#     )
+#     await state.set_state(StickerGridStates.waiting_for_emoji)
+#     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith('emoji_'))
-async def process_emoji_choice(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора эмодзи"""
+# @router.callback_query(lambda c: c.data.startswith('emoji_'))
+# async def process_emoji_choice(callback: CallbackQuery, state: FSMContext):
+#     """Обработка выбора эмодзи"""
     
-    data = await state.get_data()
-    grid = StickerGrid.from_dict(data.get('grid'))
-    idx = grid.current_editing
+#     data = await state.get_data()
+#     grid = StickerGrid.from_dict(data.get('grid'))
+#     idx = grid.current_editing
     
-    emoji_map = {
-        'emoji_cat': '😺', 'emoji_dog': '🐶', 'emoji_panda': '🐼', 'emoji_fox': '🦊',
-        'emoji_heart': '❤️', 'emoji_star': '⭐', 'emoji_art': '🎨', 'emoji_rocket': '🚀',
-        'emoji_smile': '😊', 'emoji_laugh': '😂', 'emoji_sad': '😢', 'emoji_angry': '😠',
-        'emoji_pizza': '🍕', 'emoji_burger': '🍔', 'emoji_coffee': '☕', 'emoji_cake': '🎂'
-    }
+#     emoji_map = {
+#         'emoji_cat': '😺', 'emoji_dog': '🐶', 'emoji_panda': '🐼', 'emoji_fox': '🦊',
+#         'emoji_heart': '❤️', 'emoji_star': '⭐', 'emoji_art': '🎨', 'emoji_rocket': '🚀',
+#         'emoji_smile': '😊', 'emoji_laugh': '😂', 'emoji_sad': '😢', 'emoji_angry': '😠',
+#         'emoji_pizza': '🍕', 'emoji_burger': '🍔', 'emoji_coffee': '☕', 'emoji_cake': '🎂'
+#     }
     
-    selected_emoji = emoji_map.get(callback.data, '🖼️')
-    grid.stickers[idx]['emoji'] = selected_emoji
-    await state.update_data(grid=grid.to_dict())
+#     selected_emoji = emoji_map.get(callback.data, '🖼️')
+#     grid.stickers[idx]['emoji'] = selected_emoji
+#     await state.update_data(grid=grid.to_dict())
     
-    # Возвращаемся к меню стикера
-    await show_sticker_edit_menu(callback.message, state, grid, idx)
-    await callback.answer()
+#     # Возвращаемся к меню стикера
+#     await show_sticker_edit_menu(callback.message, state, grid, idx)
+#     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == "sticker_reset")
@@ -927,7 +929,7 @@ async def show_sticker_edit_menu(message: Message, state: FSMContext, grid: Stic
             InlineKeyboardButton(text=f"◀️ Предыдущий (#{prev_idx+1})", callback_data=f"grid_edit_{prev_idx}"),
             InlineKeyboardButton(text=f"Следующий (#{next_idx+1}) ▶️", callback_data=f"grid_edit_{next_idx}")
         ],
-        [InlineKeyboardButton(text="◀️ Назад к сетке", callback_data="sticker_back")]
+        [InlineKeyboardButton(text="◀️ Назад ко всем стикерам", callback_data="sticker_back")]
     ])
     
     try:
@@ -1201,6 +1203,165 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
             )
 # ============= КОНЕЦ КОДА ДЛЯ СЕТКИ =============# ============= КОНЕЦ КОДА ДЛЯ СЕТКИ =============
 
+# Замените функцию sticker_edit_emoji на упрощенную версию
+@router.callback_query(lambda c: c.data == "sticker_edit_emoji")
+async def sticker_edit_emoji(callback: CallbackQuery, state: FSMContext):
+    """Выбор эмодзи для стикера"""
+    
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get('grid'))
+    idx = grid.current_editing
+    
+    # Сохраняем ID сообщения для последующего удаления
+    await state.update_data(last_grid_message_id=callback.message.message_id)
+    
+    # Простое меню с кнопками
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎲 Случайный эмодзи", callback_data="emoji_random")],
+        [InlineKeyboardButton(text="✏️ Ввести свой эмодзи", callback_data="emoji_custom")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="sticker_back")]
+    ])
+    
+    await callback.message.edit_text(
+        f"😊 **Выбор эмодзи для стикера #{idx + 1}**\n\n"
+        f"Текущий эмодзи: {grid.stickers[idx]['emoji']}\n\n"
+        f"Вы можете:\n"
+        f"• Нажать «Случайный эмодзи» для случайного выбора\n"
+        f"• Нажать «Ввести свой эмодзи» и ввести любой эмодзи с клавиатуры\n\n"
+        f"💡 *Подсказка: на телефоне можно переключиться на клавиатуру с эмодзи*",
+        reply_markup=keyboard
+    )
+    await state.set_state(StickerGridStates.waiting_for_emoji)
+    await callback.answer()
+
+# Обработчик для ввода своего эмодзи
+@router.callback_query(lambda c: c.data == "emoji_custom")
+async def process_emoji_custom(callback: CallbackQuery, state: FSMContext):
+    """Запрос на ввод своего эмодзи"""
+    
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get('grid'))
+    idx = grid.current_editing
+    
+    await callback.message.edit_text(
+        f"✏️ **Введите свой эмодзи для стикера #{idx + 1}**\n\n"
+        f"Текущий эмодзи: {grid.stickers[idx]['emoji']}\n\n"
+        f"Отправьте сообщение с любым эмодзи (можно использовать клавиатуру эмодзи на телефоне).\n"
+        f"Или отправьте /skip чтобы оставить текущий.\n\n"
+        f"💡 *Примеры: 😊, 🐶, ❤️, 🚀*"
+    )
+    await state.set_state(StickerGridStates.waiting_for_emoji_input)
+    await callback.answer()
+
+# Добавьте обработчик для случайного выбора
+@router.callback_query(lambda c: c.data == "emoji_random")
+async def process_emoji_random(callback: CallbackQuery, state: FSMContext):
+    """Выбор случайного эмодзи из всех категорий"""
+    
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get('grid'))
+    idx = grid.current_editing
+    
+    # Получаем случайный эмодзи
+    random_emoji = EmojiManager.get_random_emoji()
+    
+    grid.stickers[idx]['emoji'] = random_emoji
+    await state.update_data(grid=grid.to_dict())
+    
+    # Показываем сообщение с результатом
+    await callback.answer(f"Выбран эмодзи: {random_emoji}", show_alert=True)
+    
+    # Возвращаемся к меню стикера
+    await show_sticker_edit_menu(callback.message, state, grid, idx)
+    await callback.answer()
+
+# Добавьте этот обработчик после всех callback_query обработчиков, но перед handle_unknown
+
+@router.message(StickerGridStates.waiting_for_emoji_input)
+async def process_custom_emoji(message: Message, state: FSMContext):
+    """Обработка введенного пользователем эмодзи"""
+    
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get('grid'))
+    idx = grid.current_editing
+    
+    # Проверяем команду /skip
+    if message.text == "/skip":
+        # Оставляем текущий эмодзи
+        await message.delete()
+        # Возвращаемся к меню стикера
+        await show_sticker_edit_menu(message, state, grid, idx)
+        return
+    
+    # Проверяем, является ли введенный текст эмодзи
+    emoji_text = message.text.strip()
+    
+    # Проверка на эмодзи
+    import unicodedata
+    
+    def is_emoji_character(char):
+        """Проверяет, является ли символ эмодзи"""
+        try:
+            # Эмодзи часто имеют категорию 'So' (Symbol, other)
+            # или 'Sm' (Symbol, math) для некоторых
+            category = unicodedata.category(char)
+            if category in ('So', 'Sm'):
+                return True
+            # Некоторые эмодзи состоят из нескольких символов и имеют специальные имена
+            name = unicodedata.name(char, '')
+            if 'EMOJI' in name or 'FACE' in name or 'HEART' in name:
+                return True
+        except:
+            pass
+        return False
+    
+    # Проверяем каждый символ в строке
+    is_emoji = False
+    for char in emoji_text:
+        if is_emoji_character(char):
+            is_emoji = True
+            break
+    
+    # Также проверяем, что строка не слишком длинная (эмодзи обычно 1-5 символов)
+    if not is_emoji or len(emoji_text) > 10:
+        await message.reply(
+            "❌ Пожалуйста, отправьте именно эмодзи.\n\n"
+            "Примеры: 😊, 🐶, ❤️, 🚀\n\n"
+            "Или отправьте /skip чтобы оставить текущий эмодзи."
+        )
+        return
+    
+    # Устанавливаем новый эмодзи
+    grid.stickers[idx]['emoji'] = emoji_text
+    await state.update_data(grid=grid.to_dict())
+    
+    # Удаляем сообщение пользователя, чтобы не засорять чат
+    try:
+        await message.delete()
+    except:
+        pass
+    
+    # Показываем подтверждение
+    await message.answer(f"✅ Эмодзи изменен на: {emoji_text}")
+    
+    # Возвращаемся к меню стикера
+    await show_sticker_edit_menu(message, state, grid, idx)
+
+
+# Также добавьте обработчик для состояния waiting_for_emoji
+# (это состояние, когда пользователь еще не выбрал действие)
+@router.message(StickerGridStates.waiting_for_emoji)
+async def handle_emoji_state_message(message: Message, state: FSMContext):
+    """Обработка сообщений в состоянии ожидания выбора эмодзи"""
+    # Если пользователь отправил что-то текстом в этом состоянии,
+    # направляем его обратно к выбору эмодзи
+    await message.answer(
+        "❓ Пожалуйста, используйте кнопки для выбора эмодзи:\n\n"
+        "• 🎲 Случайный эмодзи\n"
+        "• ✏️ Ввести свой эмодзи\n\n"
+        "Или нажмите «◀️ Назад» для возврата в меню стикера."
+    )
+#EMOJI ^
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
