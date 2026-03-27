@@ -71,8 +71,8 @@ async def cmd_start(message: Message, state: FSMContext):
         
         # Формируем текст для поделиться
         referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
-        share_text = f"@StickerpackGeneration_bot - бот для генерации стикер-паков по текстовому описанию."
-        f"Используй мою реферальную ссылку и получи ссылку 50% на первый стикер-пак: {referral_link}"
+        share_text = f"Сгенерируй стикерпак с помощью этого бота"
+        f"Перейди по этой ссылке и получи скидку 50% на первый пак: {referral_link}"
         
         welcome_text = (
             f"Привет!\n\n"
