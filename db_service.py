@@ -232,3 +232,28 @@ class DatabaseService:
         query = "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1"
         result = await self.conn.fetchval(query, user_id)
         return result or 0
+    
+    # Добавьте этот метод в класс DatabaseService
+    async def use_paid_generation(self, user_id: int) -> bool:
+        """Использовать платную генерацию"""
+        query = """
+            UPDATE users 
+            SET paid_generations_left = paid_generations_left - 1,
+                total_generations = total_generations + 1
+            WHERE id = :user_id AND paid_generations_left > 0
+            RETURNING id
+        """
+        result = await self.session.execute(query, {"user_id": user_id})
+        await self.session.commit()
+        return result.rowcount > 0
+
+    async def add_paid_generations(self, user_id: int, count: int) -> bool:
+        """Добавить платные генерации пользователю"""
+        query = """
+            UPDATE users 
+            SET paid_generations_left = paid_generations_left + :count
+            WHERE id = :user_id
+        """
+        await self.session.execute(query, {"user_id": user_id, "count": count})
+        await self.session.commit()
+        return True

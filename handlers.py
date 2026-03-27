@@ -793,76 +793,6 @@ async def process_sticker_caption(message: Message, state: FSMContext):
     await show_sticker_edit_menu(message, state, grid, idx)
 
 
-# @router.callback_query(lambda c: c.data == "sticker_edit_emoji")
-# async def sticker_edit_emoji(callback: CallbackQuery, state: FSMContext):
-#     """Выбор эмодзи для стикера"""
-    
-#     data = await state.get_data()
-#     grid = StickerGrid.from_dict(data.get('grid'))
-#     idx = grid.current_editing
-    
-#     # Клавиатура с популярными эмодзи
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [
-#             InlineKeyboardButton(text="😺", callback_data="emoji_cat"),
-#             InlineKeyboardButton(text="🐶", callback_data="emoji_dog"),
-#             InlineKeyboardButton(text="🐼", callback_data="emoji_panda"),
-#             InlineKeyboardButton(text="🦊", callback_data="emoji_fox")
-#         ],
-#         [
-#             InlineKeyboardButton(text="❤️", callback_data="emoji_heart"),
-#             InlineKeyboardButton(text="⭐", callback_data="emoji_star"),
-#             InlineKeyboardButton(text="🎨", callback_data="emoji_art"),
-#             InlineKeyboardButton(text="🚀", callback_data="emoji_rocket")
-#         ],
-#         [
-#             InlineKeyboardButton(text="😊", callback_data="emoji_smile"),
-#             InlineKeyboardButton(text="😂", callback_data="emoji_laugh"),
-#             InlineKeyboardButton(text="😢", callback_data="emoji_sad"),
-#             InlineKeyboardButton(text="😠", callback_data="emoji_angry")
-#         ],
-#         [
-#             InlineKeyboardButton(text="🍕", callback_data="emoji_pizza"),
-#             InlineKeyboardButton(text="🍔", callback_data="emoji_burger"),
-#             InlineKeyboardButton(text="☕", callback_data="emoji_coffee"),
-#             InlineKeyboardButton(text="🎂", callback_data="emoji_cake")
-#         ],
-#         [InlineKeyboardButton(text="◀️ Назад", callback_data="sticker_back")]
-#     ])
-    
-#     await callback.message.edit_text(
-#         f"😊 **Выберите эмодзи для стикера #{idx + 1}**\n\n"
-#         f"Текущий эмодзи: {grid.stickers[idx]['emoji']}",
-#         reply_markup=keyboard
-#     )
-#     await state.set_state(StickerGridStates.waiting_for_emoji)
-#     await callback.answer()
-
-
-# @router.callback_query(lambda c: c.data.startswith('emoji_'))
-# async def process_emoji_choice(callback: CallbackQuery, state: FSMContext):
-#     """Обработка выбора эмодзи"""
-    
-#     data = await state.get_data()
-#     grid = StickerGrid.from_dict(data.get('grid'))
-#     idx = grid.current_editing
-    
-#     emoji_map = {
-#         'emoji_cat': '😺', 'emoji_dog': '🐶', 'emoji_panda': '🐼', 'emoji_fox': '🦊',
-#         'emoji_heart': '❤️', 'emoji_star': '⭐', 'emoji_art': '🎨', 'emoji_rocket': '🚀',
-#         'emoji_smile': '😊', 'emoji_laugh': '😂', 'emoji_sad': '😢', 'emoji_angry': '😠',
-#         'emoji_pizza': '🍕', 'emoji_burger': '🍔', 'emoji_coffee': '☕', 'emoji_cake': '🎂'
-#     }
-    
-#     selected_emoji = emoji_map.get(callback.data, '🖼️')
-#     grid.stickers[idx]['emoji'] = selected_emoji
-#     await state.update_data(grid=grid.to_dict())
-    
-#     # Возвращаемся к меню стикера
-#     await show_sticker_edit_menu(callback.message, state, grid, idx)
-#     await callback.answer()
-
-
 @router.callback_query(lambda c: c.data == "sticker_reset")
 async def sticker_reset(callback: CallbackQuery, state: FSMContext):
     """Сброс стикера к значениям по умолчанию"""
@@ -985,31 +915,50 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     grid = StickerGrid.from_dict(data.get('grid'))
     
-    await callback.message.edit_text(
-        f"🎨 **Начинаю генерацию...**\n\n"
+    # Сначала показываем сообщение о начале проверки
+    status_message = await callback.message.edit_text(
+        "🔄 **Проверка доступа к генерации...**\n\n"
         f"Тема: {grid.theme}\n"
         f"Стикеров: {len(grid.stickers)}\n"
         f"С индивидуальными описаниями: {sum(1 for s in grid.stickers if s['description'])}\n"
-        f"С подписями: {sum(1 for s in grid.stickers if s['caption'])}\n\n"
-        f"Это займёт около минуты."
+        f"С подписями: {sum(1 for s in grid.stickers if s['caption'])}\n"
     )
     
-    # Создаем промпт для генерации
-    reference_photo_path = data.get("reference_photo_path")
-    has_reference_photo = bool(reference_photo_path)
-    prompt = create_grid_prompt(grid, has_reference_photo=has_reference_photo)
-    
-    # Здесь ваш существующий код генерации
     session = await get_session()
     try:
         db_service = DatabaseService(session)
         user = await db_service.get_or_create_user(telegram_id=callback.from_user.id)
+        stats = await db_service.get_user_stats(user.id)
         
-        # Используем бесплатную генерацию
+        # Проверяем, есть ли доступные генерации
         can_generate = await db_service.use_free_generation(user.id)
-        if not can_generate and not (await db_service.get_user_stats(user.id))['is_premium']:
-            await callback.message.edit_text("❌ У тебя закончились бесплатные генерации.")
-            return
+        
+        if not can_generate:
+            # Если бесплатных нет, проверяем, есть ли платные
+            paid_generations = stats.get('paid_generations_left', 0)
+            
+            if paid_generations <= 0:
+                # Нет доступных генераций - показываем экран оплаты
+                await show_payment_screen(callback.message, state, grid, status_message)
+                return
+            
+            # Есть платные генерации - используем одну
+            await db_service.use_paid_generation(user.id)
+        
+        # Продолжаем генерацию
+        await status_message.edit_text(
+            f"🎨 **Начинаю генерацию...**\n\n"
+            f"Тема: {grid.theme}\n"
+            f"Стикеров: {len(grid.stickers)}\n"
+            f"С индивидуальными описаниями: {sum(1 for s in grid.stickers if s['description'])}\n"
+            f"С подписями: {sum(1 for s in grid.stickers if s['caption'])}\n\n"
+            f"Это займёт около минуты."
+        )
+        
+        # Создаем промпт для генерации
+        reference_photo_path = data.get("reference_photo_path")
+        has_reference_photo = bool(reference_photo_path)
+        prompt = create_grid_prompt(grid, has_reference_photo=has_reference_photo)
         
         # Создаем запись о генерации
         generation = await db_service.create_generation(user.id, prompt)
@@ -1045,20 +994,115 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
             db_service=db_service
         )
         
-        await callback.message.edit_text(
+        await status_message.edit_text(
             f"✅ **Стикерпак успешно создан!**\n\n"
             f"Все стикеры сгенерированы с вашими описаниями."
         )
         
     except Exception as e:
         logger.error(f"Ошибка генерации: {e}")
-        await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
+        await status_message.edit_text(f"❌ Ошибка: {str(e)}")
     finally:
         await session.close()
         await state.clear()
     
     await callback.answer()
 
+
+async def show_payment_screen(message: Message, state: FSMContext, grid: StickerGrid, status_message: Message):
+    """Показывает экран оплаты"""
+    
+    # Сохраняем данные сетки в состояние для последующей генерации
+    await state.update_data(
+        pending_generation=True,
+        pending_grid=grid.to_dict(),
+        pending_reference_photo=data.get("reference_photo_path")
+    )
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        user = await db_service.get_or_create_user(telegram_id=message.chat.id)
+        
+        # Получаем информацию о скидке
+        discount = await db_service.get_user_discount(user.id)
+        
+        original_price = settings.STICKER_PACK_PRICE
+        final_price = original_price
+        
+        if discount['has_discount']:
+            final_price = original_price * (100 - discount['discount_percent']) / 100
+            discount_text = (
+                f"\n\n🎉 *У вас скидка {discount['discount_percent']}%!*\n"
+                f"Причина: {discount['reason']}\n"
+                f"Цена со скидкой: {final_price:.0f} ₽"
+            )
+        else:
+            discount_text = "\n\n🎁 *Приведи друга и получи скидку 50%!*\nИспользуй /referral"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"💳 Оплатить {final_price:.0f} ₽", 
+                callback_data=f"pay_and_generate_{final_price}"
+            )],
+            [InlineKeyboardButton(text="❌ Отменить генерацию", callback_data="cancel_generation")]
+        ])
+        
+        await status_message.edit_text(
+            f"⚠️ **Недостаточно генераций!**\n\n"
+            f"Для создания стикерпака необходимо:\n"
+            f"• {settings.STICKER_PACK_COUNT} генераций\n\n"
+            f"💳 *Оплата*\n\n"
+            f"Пакет: {settings.STICKER_PACK_COUNT} генераций\n"
+            f"Цена: {original_price} ₽{discount_text}\n\n"
+            f"После оплаты генерация начнется автоматически.",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+    finally:
+        await session.close()
+
+
+@router.callback_query(lambda c: c.data.startswith('pay_and_generate_'))
+async def pay_and_generate(callback: CallbackQuery, state: FSMContext):
+    """Обработка оплаты с последующей генерацией"""
+    
+    # Извлекаем цену из callback_data
+    final_price = float(callback.data.split('_')[2])
+    
+    # Сохраняем флаг, что после оплаты нужно начать генерацию
+    await state.update_data(generate_after_payment=True)
+    
+    # Создание счета
+    prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
+    
+    await callback.message.bot.send_invoice(
+        chat_id=callback.message.chat.id,
+        title="Пакет генераций стикеров",
+        description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
+        payload=f"generation_pack_{callback.from_user.id}",
+        provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
+        currency=settings.CURRENCY,
+        prices=prices,
+        start_parameter="create_sticker_pack",
+        need_email=False,
+        need_phone_number=False,
+        need_shipping_address=False,
+        is_flexible=False,
+        photo_url="https://example.com/sticker_preview.jpg",
+        photo_width=500,
+        photo_height=500
+    )
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "cancel_generation")
+async def cancel_generation(callback: CallbackQuery, state: FSMContext):
+    """Отмена генерации"""
+    await state.clear()
+    await callback.message.edit_text("❌ Генерация отменена")
+    await callback.answer()
 
 def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) -> str:
     """Создает промпт из данных сетки"""
