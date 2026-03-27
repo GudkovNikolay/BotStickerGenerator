@@ -908,10 +908,10 @@ async def grid_show_preview(callback: CallbackQuery, state: FSMContext):
     await callback.answer()@router.callback_query(lambda c: c.data == "grid_generate")
 async def grid_generate(callback: CallbackQuery, state: FSMContext):
     """Генерация стикерпака из сетки"""
-    
+    logger.info(f"=== НАЧАЛО ГЕНЕРАЦИИ для пользователя {callback.from_user.id} === 1")
     data = await state.get_data()
     grid = StickerGrid.from_dict(data.get('grid'))
-    
+    logger.info(f"=== НАЧАЛО ГЕНЕРАЦИИ для пользователя {callback.from_user.id} ===  2")
     # Сначала показываем сообщение о начале проверки
     status_message = await callback.message.edit_text(
         "🔄 **Проверка доступа к генерации...**\n\n"
