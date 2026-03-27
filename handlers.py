@@ -201,7 +201,7 @@ async def cmd_buy(message: Message, state: FSMContext):
         
         await message.answer(
             f"💳 *Оплата*\n\n"
-            f"Пакет: {settings.STICKER_PACK_COUNT} генераций\n"
+            f"Генерация стикерпака\n"
             f"Цена: {original_price} ₽{discount_text}",
             reply_markup=keyboard,
             parse_mode="Markdown"
@@ -287,11 +287,13 @@ async def successful_payment_handler(message: Message):
     try:
         db_service = DatabaseService(session)
         
-        # Определяем количество генераций в зависимости от суммы
-        if payment_info.currency == "XTR":
-            generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
-        else:
-            generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
+        # # Определяем количество генераций в зависимости от суммы
+        # if payment_info.currency == "XTR":
+        #     generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
+        # else:
+        #     generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
+        
+        generations_to_add = 1
         
         # Добавляем генерации пользователю
         user = await db_service.get_or_create_user(
