@@ -257,3 +257,14 @@ class DatabaseService:
         await self.session.execute(query, {"user_id": user_id, "count": count})
         await self.session.commit()
         return True
+
+    # В файле db_service.py добавьте этот метод в класс DatabaseService
+
+    async def get_user_by_id(self, user_id: int):
+        """Получить пользователя по ID"""
+        from database import User
+        
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        return result.scalar_one_or_none()
