@@ -228,10 +228,12 @@ class DatabaseService:
 
     async def get_referrals_count(self, user_id: int) -> int:
         """Возвращает количество рефералов пользователя"""
-        # Запрос к таблице referrals
-        query = "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1"
-        result = await self.conn.fetchval(query, user_id)
-        return result or 0
+        from database import User
+        
+        result = await self.session.execute(
+            select(func.count(User.id)).where(User.referred_by == user_id)
+        )
+        return result.scalar() or 0
     
     # Добавьте этот метод в класс DatabaseService
     async def use_paid_generation(self, user_id: int) -> bool:
