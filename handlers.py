@@ -1406,6 +1406,89 @@ async def handle_emoji_state_message(message: Message, state: FSMContext):
         "Или нажмите «◀️ Назад» для возврата в меню стикера."
     )
 #EMOJI ^
+
+@router.message(F.successful_payment)
+async def successful_payment_handler(message: Message, state: FSMContext):
+    """Обработка успешного платежа"""
+    payment_info = message.successful_payment
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        
+        # Определяем количество генераций в зависимости от суммы
+        if payment_info.currency == "XTR":
+            generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
+        else:
+            generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
+        
+        # Добавляем генерации пользователю
+        user = await db_service.get_or_create_user(
+            telegram_id=message.from_user.id
+        )
+        
+        # Обновляем количество платных генераций
+        await db_service.add_paid_generations(user.id, generations_to_add)
+        
+        # Сохраняем информацию о платеже
+        await db_service.save_payment(
+            user_id=user.id,
+            payment_id=payment_info.provider_payment_charge_id or payment_info.telegram_payment_charge_id,
+            amount=payment_info.total_amount,
+            currency=payment_info.currency,
+            generations_added=generations_to_add
+        )
+        
+        # Проверяем, нужно ли начать генерацию после оплаты
+        data = await state.get_data()
+        if data.get('generate_after_payment'):
+            # Убираем флаг
+            await state.update_data(generate_after_payment=False)
+            
+            # Получаем сохраненные данные для генерации
+            pending_generation = data.get('pending_generation')
+            if pending_generation:
+                grid = StickerGrid.from_dict(data.get('pending_grid'))
+                reference_photo_path = data.get('pending_reference_photo')
+                
+                # Сохраняем данные в состояние для генерации
+                await state.update_data(
+                    grid=grid.to_dict(),
+                    reference_photo_path=reference_photo_path
+                )
+                
+                # Запускаем генерацию
+                await message.answer(
+                    f"✅ Оплата прошла успешно!\n\n"
+                    f"Начинаю генерацию вашего стикерпака..."
+                )
+                
+                # Вызываем генерацию
+                from aiogram.types import CallbackQuery
+                fake_callback = CallbackQuery(
+                    id="temp",
+                    from_user=message.from_user,
+                    message=message,
+                    data="grid_generate",
+                    chat_instance="temp",
+                    bot=message.bot
+                )
+                await grid_generate(fake_callback, state)
+            else:
+                await message.answer(
+                    f"✅ Оплата прошла успешно!\n\n"
+                    f"Теперь можно перейти к генерации.\n"
+                    f"Используйте /generate для создания вашего пака!"
+                )
+        else:
+            await message.answer(
+                f"✅ Оплата прошла успешно!\n\n"
+                f"Теперь можно перейти к генерации.\n"
+                f"Используйте /generate для создания вашего пака!"
+            )
+    finally:
+        await session.close()
+        
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
