@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     ADMIN_USER_IDS: str = ""
     FREE_GENERATIONS_PER_USER: int = 3
     STICKER_PACK_COUNT: int = 5
-    STICKER_PACK_PRICE: int = 2  # в рублях/центах
+    STICKER_PACK_PRICE: int = 100  # в рублях/центах
     STICKER_PACK_STARS_PRICE: int = 50  # цена в звездах Telegram
 
     # Sticker grid generation (one request -> sticker sheet)
@@ -81,3 +81,7 @@ except Exception as e:
 settings.STICKERS_DIR.mkdir(exist_ok=True)
 settings.TEMP_DIR.mkdir(exist_ok=True)
 
+logger.info('*'*20)
+logger.info(settings.PAYMENTS_PROVIDER_TOKEN)
+logger.info(settings.STICKER_PACK_PRICE)
+logger.info('*'*20)
