@@ -81,7 +81,7 @@ except Exception as e:
 settings.STICKERS_DIR.mkdir(exist_ok=True)
 settings.TEMP_DIR.mkdir(exist_ok=True)
 
-logger.info('*'*20)
-logger.info(settings.PAYMENTS_PROVIDER_TOKEN)
-logger.info(settings.STICKER_PACK_PRICE)
-logger.info('*'*20)
+print('*'*20)
+print(settings.PAYMENTS_PROVIDER_TOKEN)
+print(settings.STICKER_PACK_PRICE)
+print('*'*20)
