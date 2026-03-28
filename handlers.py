@@ -1204,6 +1204,11 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
 async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[Path],
                                         grid: StickerGrid, generation_id: int, db_service):
     """Создает стикер-пак с данными из сетки"""
+        # ОТЛАДКА
+    logger.info(f"stickers_paths: {stickers_paths}")
+    logger.info(f"len(stickers_paths): {len(stickers_paths)}")
+    logger.info(f"grid.stickers: {grid.stickers}")
+    logger.info(f"len(grid.stickers): {len(grid.stickers)}")
     
     import hashlib
     import time
