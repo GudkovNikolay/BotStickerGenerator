@@ -150,3 +150,4 @@ async def init_db():
             logger.error(f"Критическая ошибка при создании таблиц: {e2}")
             raise
 
+

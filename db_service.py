@@ -156,7 +156,8 @@ class DatabaseService:
                 "completed_generations": 0,
                 "referrals_count": 0,
                 "referral_code": "",
-                "is_premium": False
+                "is_premium": False,
+                "paid_generations_left": 0
             }
         
         generations_result = await self.session.execute(
@@ -186,7 +187,8 @@ class DatabaseService:
             "completed_generations": completed_generations,
             "referrals_count": referrals_count,
             "referral_code": user.referral_code,
-            "is_premium": user.is_premium
+            "is_premium": user.is_premium,
+            "paid_generations_left": user.paid_generations_left
         }
 
 # В db_service.py
