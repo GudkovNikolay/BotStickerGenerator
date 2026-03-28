@@ -1217,8 +1217,12 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
     bot_info = await bot.me()
     bot_username = bot_info.username
     
+    if not grid.theme:
+        grid_theme = 'arbitrary topic'
+    else:
+        grid_theme = grid.theme
     # Создаем имя пака
-    clean_theme = re.sub(r'[^a-zA-Z0-9]', '', grid.theme[:20].lower())
+    clean_theme = re.sub(r'[^a-zA-Z0-9]', '', grid_theme[:20].lower())
     if not clean_theme or clean_theme == "невыбрана":
         clean_theme = "stickers"
     
