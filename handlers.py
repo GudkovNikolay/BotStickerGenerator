@@ -301,7 +301,7 @@ async def successful_payment_handler(message: Message):
         )
         
         # Обновляем количество генераций (добавьте метод в db_service)
-        await db_service.add_generations(user.id, generations_to_add)
+        await db_service.add_paid_generations(user.id, generations_to_add)
         
         # Сохраняем информацию о платеже
         await db_service.save_payment(
@@ -1089,23 +1089,48 @@ async def payanndgenerate(callback: CallbackQuery, state: FSMContext):
     
     logger.info(prices)
 
-    await callback.message.bot.send_invoice(
-        chat_id=callback.message.chat.id,
-        title="Пакет генераций стикеров",
-        description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
-        payload=f"generation_pack_{callback.from_user.id}",
-        provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
+    # await callback.message.bot.send_invoice(
+    #     chat_id=callback.message.chat.id,
+    #     title="Пакет генераций стикеров",
+    #     description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
+    #     payload=f"generation_pack_{callback.from_user.id}",
+    #     provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
+    #     currency=settings.CURRENCY,
+    #     prices=prices,
+    #     start_parameter="create_sticker_pack",
+    #     need_email=False,
+    #     need_phone_number=False,
+    #     need_shipping_address=False,
+    #     is_flexible=False,
+    #     photo_url="https://example.com/sticker_preview.jpg",
+    #     photo_width=500,
+    #     photo_height=500
+    # )
+
+    # СОЗДАЕМ ФЕЙКОВОЕ СООБЩЕНИЕ ОБ УСПЕШНОЙ ОПЛАТЕ
+    from aiogram.types import SuccessfulPayment, Message
+    
+    # Создаем фейковый объект SuccessfulPayment
+    fake_successful_payment = SuccessfulPayment(
         currency=settings.CURRENCY,
-        prices=prices,
-        start_parameter="create_sticker_pack",
-        need_email=False,
-        need_phone_number=False,
-        need_shipping_address=False,
-        is_flexible=False,
-        photo_url="https://example.com/sticker_preview.jpg",
-        photo_width=500,
-        photo_height=500
+        total_amount=int(final_price * 100),
+        invoice_payload=f"generation_pack_{callback.from_user.id}",
+        telegram_payment_charge_id=f"fake_charge_{callback.from_user.id}_{int(time.time())}",
+        provider_payment_charge_id=None
     )
+    
+    # Создаем фейковое сообщение с successful_payment
+    fake_message = Message(
+        message_id=callback.message.message_id,
+        date=int(time.time()),
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        successful_payment=fake_successful_payment
+    )
+    
+    # ВЫЗЫВАЕМ ОБРАБОТЧИК УСПЕШНОЙ ОПЛАТЫ НАПРЯМУЮ
+    await successful_payment_handler(fake_message, state)
+    
     await callback.answer()
 
 
