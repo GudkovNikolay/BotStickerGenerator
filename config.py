@@ -65,7 +65,12 @@ class Settings(BaseSettings):
 
 # Создаем директории для файлов
 try:
-    settings = Settings()
+    env_file = Path(__file__).parent / ".env"
+    if env_file.exists():
+        settings = Settings(_env_file=str(env_file))
+    else:
+        print(f"Предупреждение: Файл {env_file} не найден, используются значения по умолчанию")
+        settings = Settings()
 except Exception as e:
     import sys
     print(f"Ошибка загрузки конфигурации: {e}")
