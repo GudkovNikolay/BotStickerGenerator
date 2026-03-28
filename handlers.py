@@ -119,7 +119,7 @@ async def cmd_stats(message: Message):
 
         stats_text = (
             f"📊 Твоя статистика:\n\n"
-            # f"🎁 Бесплатных генераций: {stats['free_generations_left']}\n"
+            f"$ Оплачено генераций: {stats['paid_generations_left']}\n"
             f"📦 Всего генераций: {stats['total_generations']}\n"
             f"✅ Успешных: {stats['completed_generations']}\n"
             f"👥 Рефералов: {stats['referrals_count']}\n"
