@@ -294,7 +294,7 @@ async def successful_payment_handler(message: Message):
         #     generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
         
         generations_to_add = 1
-        
+
         # Добавляем генерации пользователю
         user = await db_service.get_or_create_user(
             telegram_id=message.from_user.id
@@ -1035,7 +1035,8 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         
         original_price = settings.STICKER_PACK_PRICE
         final_price = original_price
-        
+        logger.info(final_price)
+        logger.info("PRICE !!!!!!!!!!!")
         if discount['has_discount']:
             final_price = original_price * (100 - discount['discount_percent']) / 100
             discount_text = (
