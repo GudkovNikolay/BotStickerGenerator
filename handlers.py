@@ -1116,7 +1116,7 @@ async def payanndgenerate(callback: CallbackQuery, state: FSMContext):
         total_amount=int(final_price * 100),
         invoice_payload=f"generation_pack_{callback.from_user.id}",
         telegram_payment_charge_id=f"fake_charge_{callback.from_user.id}_{int(time.time())}",
-        provider_payment_charge_id=None
+        provider_payment_charge_id=f"fake_provider_charge_{callback.from_user.id}_{int(time.time())}"  # Не может быть None, нужно строку
     )
     
     # Создаем фейковое сообщение с successful_payment
