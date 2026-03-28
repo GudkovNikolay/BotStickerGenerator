@@ -1209,7 +1209,7 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
     logger.info(f"len(stickers_paths): {len(stickers_paths)}")
     logger.info(f"grid.stickers: {grid.stickers}")
     logger.info(f"len(grid.stickers): {len(grid.stickers)}")
-    
+
     import hashlib
     import time
     import re
@@ -1225,12 +1225,17 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
     unique_hash = hashlib.md5(f"{user_id}_{generation_id}_{time.time()}".encode()).hexdigest()[:8]
     base_name = f"{clean_theme}_{unique_hash}"
     
+    logger.info(base_name)
+
+    logger.info(base_name is None)
+
     if base_name[0].isdigit():
         base_name = "s" + base_name
     
     pack_name = f"{base_name}_by_{bot_username}"
     pack_title = f"Стикеры: {grid.theme[:30]}"
     
+    logger.info('iuhbiuaherghewrijgiqejrgiqejrgiojheqrg')
     # Подготавливаем стикеры с эмодзи из сетки
     input_stickers = []
     for i, (sticker_path, sticker_data) in enumerate(zip(stickers_paths, grid.stickers)):
