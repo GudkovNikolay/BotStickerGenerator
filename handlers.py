@@ -1075,6 +1075,8 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
 async def pay_and_generate(callback: CallbackQuery, state: FSMContext):
     """Обработка оплаты с последующей генерацией"""
     
+    logger.info(callback.data.split('_')[2])
+    logger.info(callback.data)
     # Извлекаем цену из callback_data
     final_price = float(callback.data.split('_')[2])
     
