@@ -274,3 +274,48 @@ class DatabaseService:
             select(User).where(User.id == user_id)
         )
         return result.scalar_one_or_none()
+
+    # В db_service.py добавьте метод save_payment
+
+    async def save_payment(
+        self, 
+        user_id: int, 
+        payment_id: str, 
+        amount: float, 
+        currency: str, 
+        generations_added: int,
+        status: str = "succeeded"
+    ) -> Payment:
+        """Сохранить информацию о платеже"""
+        from database import Payment
+        
+        payment = Payment(
+            user_id=user_id,
+            payment_id=payment_id,
+            amount=amount,
+            currency=currency,
+            provider="telegram",  # или "yookassa" в зависимости от провайдера
+            status=status,
+            extra_metadata=f'{{"generations_added": {generations_added}}}'
+        )
+        
+        self.session.add(payment)
+        await self.session.commit()
+        await self.session.refresh(payment)
+        
+        return payment
+
+    # В db_service.py добавьте метод get_payment_history
+
+    async def get_payment_history(self, user_id: int, limit: int = 10) -> List[Payment]:
+        """Получить историю платежей пользователя"""
+        from database import Payment
+        from sqlalchemy import select, desc
+        
+        result = await self.session.execute(
+            select(Payment)
+            .where(Payment.user_id == user_id)
+            .order_by(desc(Payment.created_at))
+            .limit(limit)
+        )
+        return result.scalars().all()
