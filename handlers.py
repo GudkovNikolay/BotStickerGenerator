@@ -1087,8 +1087,8 @@ async def payanndgenerate(callback: CallbackQuery, state: FSMContext):
     # Создание счета
     prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
     
-    logger.info(settings.PAYMENTS_PROVIDER_TOKEN)
-    
+    logger.info(prices)
+
     await callback.message.bot.send_invoice(
         chat_id=callback.message.chat.id,
         title="Пакет генераций стикеров",
