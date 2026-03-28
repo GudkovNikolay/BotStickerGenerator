@@ -24,6 +24,7 @@ class User(Base):
     last_name = Column(String(255), nullable=True)
     is_premium = Column(Boolean, default=False)
     free_generations_left = Column(Integer, default=0)
+    paid_generations_left = Column(Integer, default=0)
     referral_code = Column(String(50), unique=True, nullable=False, index=True)
     referred_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     balance = Column(Float, default=0.0)
