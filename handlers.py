@@ -1050,7 +1050,7 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"💳 Оплатить {final_price:.0f} ₽", 
-                callback_data=f"pay_and_generate_{final_price}"
+                callback_data=f"payanndgenerate_{final_price}"
             )],
             [InlineKeyboardButton(text="❌ Отменить генерацию", callback_data="cancel_generation")]
         ])
@@ -1071,8 +1071,8 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         await session.close()
 
 
-@router.callback_query(lambda c: c.data.startswith('pay_and_generate_'))
-async def pay_and_generate(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(lambda c: c.data.startswith('payanndgenerate_'))
+async def payanndgenerate(callback: CallbackQuery, state: FSMContext):
     """Обработка оплаты с последующей генерацией"""
     
     logger.info(callback.data.split('_')[2])
