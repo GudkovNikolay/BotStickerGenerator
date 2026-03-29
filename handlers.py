@@ -279,19 +279,13 @@ async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
     )
 
 @router.message(F.successful_payment)
-async def successful_payment_handler(message: Message):
+async def successful_payment_handler(message: Message, state: FSMContext):  # <-- ДОБАВЬ state
     """Обработка успешного платежа"""
     payment_info = message.successful_payment
     
     session = await get_session()
     try:
         db_service = DatabaseService(session)
-        
-        # # Определяем количество генераций в зависимости от суммы
-        # if payment_info.currency == "XTR":
-        #     generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
-        # else:
-        #     generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
         
         generations_to_add = 1
 
@@ -300,7 +294,7 @@ async def successful_payment_handler(message: Message):
             telegram_id=message.from_user.id
         )
         
-        # Обновляем количество генераций (добавьте метод в db_service)
+        # Обновляем количество генераций
         await db_service.add_paid_generations(user.id, generations_to_add)
         
         # Сохраняем информацию о платеже
@@ -312,11 +306,54 @@ async def successful_payment_handler(message: Message):
             generations_added=generations_to_add
         )
         
-        await message.answer(
-            f"✅ Оплата прошла успешно!\n\n"
-            f"Теперь можно перейти к генерации.\n"
-            f"Используйте /generate для создания вашего пака!"
-        )
+        # ========== ДОБАВЛЯЕМ ЛОГИКУ ЗАПУСКА ГЕНЕРАЦИИ ==========
+        # Проверяем, есть ли ожидающая генерация в состоянии
+        data = await state.get_data()
+        
+        if data.get('pending_generation'):
+            # Получаем сохраненные данные
+            grid = StickerGrid.from_dict(data.get('pending_grid'))
+            reference_photo_path = data.get('pending_reference_photo')
+            
+            # Сохраняем в состояние для grid_generate
+            await state.update_data(
+                grid=grid.to_dict(),
+                reference_photo_path=reference_photo_path
+            )
+            
+            # Отправляем сообщение о начале генерации
+            await message.answer(
+                "✅ Оплата прошла успешно!\n\n"
+                "🎨 Начинаю генерацию вашего стикерпака..."
+            )
+            
+            # Создаем фейковый callback для вызова grid_generate
+            from aiogram.types import CallbackQuery
+            fake_callback = CallbackQuery(
+                id="temp",
+                from_user=message.from_user,
+                message=message,
+                data="grid_generate",
+                chat_instance="temp",
+                bot=message.bot
+            )
+            # Запускаем генерацию
+            await grid_generate(fake_callback, state)
+            
+            # Очищаем флаг после запуска
+            await state.update_data(pending_generation=False)
+        else:
+            # Если это оплата из /buy (без ожидающей генерации)
+            await message.answer(
+                f"✅ Оплата прошла успешно!\n\n"
+                f"Теперь можно перейти к генерации.\n"
+                f"Используйте /generate для создания вашего пака!"
+            )
+        # ========== КОНЕЦ ДОБАВЛЕННОЙ ЛОГИКИ ==========
+        
+    except Exception as e:
+        logger.error(f"Ошибка в successful_payment_handler: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
     finally:
         await session.close()
 
@@ -1050,7 +1087,7 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"💳 Оплатить {final_price:.0f} ₽", 
-                callback_data=f"payanndgenerate_{final_price}"
+                callback_data=f"payandgenerate_{final_price}"
             )],
             [InlineKeyboardButton(text="❌ Отменить генерацию", callback_data="cancel_generation")]
         ])
@@ -1071,8 +1108,8 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         await session.close()
 
 
-@router.callback_query(lambda c: c.data.startswith('payanndgenerate_'))
-async def payanndgenerate(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
+async def payandgenerate(callback: CallbackQuery, state: FSMContext):
     """Обработка оплаты с последующей генерацией"""
     
     # logger.info(callback.data.split('_')[1])
