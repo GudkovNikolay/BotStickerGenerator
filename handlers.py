@@ -1214,9 +1214,9 @@ async def real_pay(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(lambda c: c.data == "test_pay")
 async def test_pay(callback: CallbackQuery, state: FSMContext):
     """Тестовая оплата (без реального списания)"""
-    
+    session = await get_session()
     db_service = DatabaseService(session)
-    
+
     # Добавляем генерации пользователю
     user = await db_service.get_or_create_user(
         telegram_id=message.from_user.id
