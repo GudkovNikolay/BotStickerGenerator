@@ -310,6 +310,11 @@ async def successful_payment_handler(message: Message, state: FSMContext):  # <-
         # Проверяем, есть ли ожидающая генерация в состоянии
         data = await state.get_data()
         
+        logger.info('*'*20)
+        logger.info(data.get('pending_generation') is None)
+        logger.info(data.get('pending_generation'))
+        logger.info(data.get('pending_generation') is None)
+
         if data.get('pending_generation'):
             # Получаем сохраненные данные
             grid = StickerGrid.from_dict(data.get('pending_grid'))
@@ -1061,7 +1066,12 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         pending_grid=grid.to_dict(),
         pending_reference_photo=reference_photo_path
     )
+
+    data = await state.get_data()
     
+
+    logger.info(data.get('pending_generation'))
+    logger.info(data.get('pending_generation') is None)
     session = await get_session()
     try:
         db_service = DatabaseService(session)
