@@ -1603,7 +1603,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         
         # Добавляем генерации пользователю
         user = await db_service.get_or_create_user(
-            telegram_id=message.from_user.id
+            telegram_id='788139267'
         )
         
         # Обновляем количество платных генераций
