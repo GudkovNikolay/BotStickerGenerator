@@ -280,89 +280,89 @@ async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
         ok=True
     )
 
-@router.message(F.successful_payment)
-async def successful_payment_handler(message: Message, state: FSMContext):  # <-- ДОБАВЬ state
-    """Обработка успешного платежа"""
-    payment_info = message.successful_payment
+# @router.message(F.successful_payment)
+# async def successful_payment_handler(message: Message, state: FSMContext):  # <-- ДОБАВЬ state
+#     """Обработка успешного платежа"""
+#     payment_info = message.successful_payment
     
-    session = await get_session()
-    try:
-        db_service = DatabaseService(session)
+#     session = await get_session()
+#     try:
+#         db_service = DatabaseService(session)
         
-        generations_to_add = 1
+#         generations_to_add = 1
 
-        # Добавляем генерации пользователю
-        user = await db_service.get_or_create_user(
-            telegram_id=message.from_user.id
-        )
+#         # Добавляем генерации пользователю
+#         user = await db_service.get_or_create_user(
+#             telegram_id=message.from_user.id
+#         )
         
-        # Обновляем количество генераций
-        await db_service.add_paid_generations(user.id, generations_to_add)
+#         # Обновляем количество генераций
+#         await db_service.add_paid_generations(user.id, generations_to_add)
         
-        # Сохраняем информацию о платеже
-        await db_service.save_payment(
-            user_id=user.id,
-            payment_id=payment_info.provider_payment_charge_id or payment_info.telegram_payment_charge_id,
-            amount=payment_info.total_amount,
-            currency=payment_info.currency,
-            generations_added=generations_to_add
-        )
+#         # Сохраняем информацию о платеже
+#         await db_service.save_payment(
+#             user_id=user.id,
+#             payment_id=payment_info.provider_payment_charge_id or payment_info.telegram_payment_charge_id,
+#             amount=payment_info.total_amount,
+#             currency=payment_info.currency,
+#             generations_added=generations_to_add
+#         )
         
-        # ========== ДОБАВЛЯЕМ ЛОГИКУ ЗАПУСКА ГЕНЕРАЦИИ ==========
-        # Проверяем, есть ли ожидающая генерация в состоянии
-        data = await state.get_data()
+#         # ========== ДОБАВЛЯЕМ ЛОГИКУ ЗАПУСКА ГЕНЕРАЦИИ ==========
+#         # Проверяем, есть ли ожидающая генерация в состоянии
+#         data = await state.get_data()
         
-        logger.info('*'*20)
-        logger.info(data.get('pending_generation') is None)
-        logger.info(data.get('pending_generation'))
-        logger.info(data.get('pending_generation') is None)
+#         logger.info('*'*20)
+#         logger.info(data.get('pending_generation') is None)
+#         logger.info(data.get('pending_generation'))
+#         logger.info(data.get('pending_generation') is None)
 
-        if data.get('pending_generation'):
-            # Получаем сохраненные данные
-            grid = StickerGrid.from_dict(data.get('pending_grid'))
-            reference_photo_path = data.get('pending_reference_photo')
+#         if data.get('pending_generation'):
+#             # Получаем сохраненные данные
+#             grid = StickerGrid.from_dict(data.get('pending_grid'))
+#             reference_photo_path = data.get('pending_reference_photo')
             
-            # Сохраняем в состояние для grid_generate
-            await state.update_data(
-                grid=grid.to_dict(),
-                reference_photo_path=reference_photo_path
-            )
+#             # Сохраняем в состояние для grid_generate
+#             await state.update_data(
+#                 grid=grid.to_dict(),
+#                 reference_photo_path=reference_photo_path
+#             )
             
-            # Отправляем сообщение о начале генерации
-            await message.answer(
-                "✅ Оплата прошла успешно!\n\n"
-                "🎨 Начинаю генерацию вашего стикерпака..."
-            )
+#             # Отправляем сообщение о начале генерации
+#             await message.answer(
+#                 "✅ Оплата прошла успешно!\n\n"
+#                 "🎨 Начинаю генерацию вашего стикерпака..."
+#             )
             
-            # Создаем фейковый callback для вызова grid_generate
-            from aiogram.types import CallbackQuery
-            fake_callback = CallbackQuery(
-                id="temp",
-                from_user=message.from_user,
-                message=message,
-                data="grid_generate",
-                chat_instance="temp",
-                bot=message.bot
-            )
-            # Запускаем генерацию
-            await grid_generate(fake_callback, state)
+#             # Создаем фейковый callback для вызова grid_generate
+#             from aiogram.types import CallbackQuery
+#             fake_callback = CallbackQuery(
+#                 id="temp",
+#                 from_user=message.from_user,
+#                 message=message,
+#                 data="grid_generate",
+#                 chat_instance="temp",
+#                 bot=message.bot
+#             )
+#             # Запускаем генерацию
+#             await grid_generate(fake_callback, state)
             
-            # Очищаем флаг после запуска
-            await state.update_data(pending_generation=False)
-        else:
-            # Если это оплата из /buy (без ожидающей генерации)
-            await message.answer(
-                f"✅ Оплата прошла успешно!\n\n"
-                f"Теперь можно перейти к генерации.\n"
-                f"Используйте /generate для создания вашего пака!"
-            )
-        # ========== КОНЕЦ ДОБАВЛЕННОЙ ЛОГИКИ ==========
+#             # Очищаем флаг после запуска
+#             await state.update_data(pending_generation=False)
+#         else:
+#             # Если это оплата из /buy (без ожидающей генерации)
+#             await message.answer(
+#                 f"✅ Оплата прошла успешно!\n\n"
+#                 f"Теперь можно перейти к генерации.\n"
+#                 f"Используйте /generate для создания вашего пака!"
+#             )
+#         # ========== КОНЕЦ ДОБАВЛЕННОЙ ЛОГИКИ ==========
         
-    except Exception as e:
-        logger.error(f"Ошибка в successful_payment_handler: {e}")
-        await message.answer(f"❌ Ошибка: {str(e)}")
-    finally:
-        await session.close()
+#     except Exception as e:
+#         logger.error(f"Ошибка в successful_payment_handler: {e}")
+#         await message.answer(f"❌ Ошибка: {str(e)}")
+#     finally:
+#         await session.close()
 
 @router.message(Command("history"))
 async def cmd_history(message: Message):
