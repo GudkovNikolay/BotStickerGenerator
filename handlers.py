@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
+pending_generations = {}
+
 # Состояния FSM
 class GenerationStates(StatesGroup):
     waiting_for_prompt = State()
@@ -1060,18 +1062,16 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
 async def show_payment_screen(message: Message, state: FSMContext, grid: StickerGrid, status_message: Message, reference_photo_path: str = None):
     """Показывает экран оплаты"""
     
-    # Сохраняем данные сетки в состояние для последующей генерации
-    await state.update_data(
-        pending_generation=True,
-        pending_grid=grid.to_dict(),
-        pending_reference_photo=reference_photo_path
-    )
-
-    data = await state.get_data()
+    user_id = message.chat.id
     
-
-    logger.info(data.get('pending_generation'))
-    logger.info(data.get('pending_generation') is None)
+    # Сохраняем данные в ГЛОБАЛЬНЫЙ СЛОВАРЬ (не в FSM)
+    pending_generations[user_id] = {
+        'grid': grid.to_dict(),
+        'reference_photo_path': reference_photo_path
+    }
+    
+    logger.info(f"Сохранены данные для пользователя {user_id}: {pending_generations[user_id]}")
+    
     session = await get_session()
     try:
         db_service = DatabaseService(session)
@@ -1082,8 +1082,7 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         
         original_price = settings.STICKER_PACK_PRICE
         final_price = original_price
-        logger.info(final_price)
-        logger.info("PRICE !!!!!!!!!!!")
+        
         if discount['has_discount']:
             final_price = original_price * (100 - discount['discount_percent']) / 100
             discount_text = (
@@ -1117,19 +1116,17 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
     finally:
         await session.close()
 
-
 @router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
 async def payandgenerate(callback: CallbackQuery, state: FSMContext):
     """Обработка оплаты с последующей генерацией"""
     
-    # logger.info(callback.data.split('_')[1])
     logger.info(callback.data)
 
     # Извлекаем цену из callback_data
     final_price = float(callback.data.split('_')[1])
     
-    # Сохраняем флаг, что после оплаты нужно начать генерацию
-    await state.update_data(generate_after_payment=True)
+    # НЕ сохраняем флаг в FSM - он все равно не сохранится
+    # Просто отправляем инвойс
     
     # Создание счета
     prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
@@ -1153,37 +1150,15 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
         photo_width=500,
         photo_height=500
     )
-
-    # # СОЗДАЕМ ФЕЙКОВОЕ СООБЩЕНИЕ ОБ УСПЕШНОЙ ОПЛАТЕ
-    # from aiogram.types import SuccessfulPayment, Message
-    
-    # # Создаем фейковый объект SuccessfulPayment
-    # fake_successful_payment = SuccessfulPayment(
-    #     currency=settings.CURRENCY,
-    #     total_amount=int(final_price * 100),
-    #     invoice_payload=f"generation_pack_{callback.from_user.id}",
-    #     telegram_payment_charge_id=f"fake_charge_{callback.from_user.id}_{int(time.time())}",
-    #     provider_payment_charge_id=f"fake_provider_charge_{callback.from_user.id}_{int(time.time())}"  # Не может быть None, нужно строку
-    # )
-    
-    # # Создаем фейковое сообщение с successful_payment
-    # fake_message = Message(
-    #     message_id=callback.message.message_id,
-    #     date=int(time.time()),
-    #     chat=callback.message.chat,
-    #     from_user=callback.from_user,
-    #     successful_payment=fake_successful_payment
-    # )
-    
-    # # ВЫЗЫВАЕМ ОБРАБОТЧИК УСПЕШНОЙ ОПЛАТЫ НАПРЯМУЮ
-    # await successful_payment_handler(fake_message, state)
     
     await callback.answer()
-
 
 @router.callback_query(lambda c: c.data == "cancel_generation")
 async def cancel_generation(callback: CallbackQuery, state: FSMContext):
     """Отмена генерации"""
+    user_id = callback.from_user.id
+    if user_id in pending_generations:
+        del pending_generations[user_id]
     await state.clear()
     await callback.message.edit_text("❌ Генерация отменена")
     await callback.answer()
@@ -1514,7 +1489,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
     try:
         db_service = DatabaseService(session)
         
-        # Определяем количество генераций в зависимости от суммы
+        # Определяем количество генераций
         if payment_info.currency == "XTR":
             generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
         else:
@@ -1537,53 +1512,55 @@ async def successful_payment_handler(message: Message, state: FSMContext):
             generations_added=generations_to_add
         )
         
-        # Проверяем, нужно ли начать генерацию после оплаты
-        data = await state.get_data()
-        if data.get('generate_after_payment'):
-            # Убираем флаг
-            await state.update_data(generate_after_payment=False)
+        # ========== ПРОВЕРЯЕМ ГЛОБАЛЬНЫЙ СЛОВАРЬ ==========
+        user_id = message.from_user.id
+        pending = pending_generations.get(user_id)
+        
+        logger.info(f"pending_generations for {user_id}: {pending}")
+        
+        if pending:
+            # Получаем сохраненные данные
+            grid = StickerGrid.from_dict(pending['grid'])
+            reference_photo_path = pending['reference_photo_path']
             
-            # Получаем сохраненные данные для генерации
-            pending_generation = data.get('pending_generation')
-            if pending_generation:
-                grid = StickerGrid.from_dict(data.get('pending_grid'))
-                reference_photo_path = data.get('pending_reference_photo')
-                
-                # Сохраняем данные в состояние для генерации
-                await state.update_data(
-                    grid=grid.to_dict(),
-                    reference_photo_path=reference_photo_path
-                )
-                
-                # Запускаем генерацию
-                await message.answer(
-                    f"✅ Оплата прошла успешно!\n\n"
-                    f"Начинаю генерацию вашего стикерпака..."
-                )
-                
-                # Вызываем генерацию
-                from aiogram.types import CallbackQuery
-                fake_callback = CallbackQuery(
-                    id="temp",
-                    from_user=message.from_user,
-                    message=message,
-                    data="grid_generate",
-                    chat_instance="temp",
-                    bot=message.bot
-                )
-                await grid_generate(fake_callback, state)
-            else:
-                await message.answer(
-                    f"✅ Оплата прошла успешно!\n\n"
-                    f"Теперь можно перейти к генерации.\n"
-                    f"Используйте /generate для создания вашего пака!"
-                )
+            # Удаляем из словаря, чтобы не использовать повторно
+            del pending_generations[user_id]
+            
+            # Сохраняем в состояние для grid_generate
+            await state.update_data(
+                grid=grid.to_dict(),
+                reference_photo_path=reference_photo_path
+            )
+            
+            # Отправляем сообщение о начале генерации
+            await message.answer(
+                "✅ Оплата прошла успешно!\n\n"
+                "🎨 Начинаю генерацию вашего стикерпака..."
+            )
+            
+            # Вызываем генерацию
+            from aiogram.types import CallbackQuery
+            fake_callback = CallbackQuery(
+                id="temp",
+                from_user=message.from_user,
+                message=message,
+                data="grid_generate",
+                chat_instance="temp",
+                bot=message.bot
+            )
+            await grid_generate(fake_callback, state)
         else:
+            # Если это оплата из /buy (без ожидающей генерации)
             await message.answer(
                 f"✅ Оплата прошла успешно!\n\n"
                 f"Теперь можно перейти к генерации.\n"
                 f"Используйте /generate для создания вашего пака!"
             )
+        # ========== КОНЕЦ ==========
+        
+    except Exception as e:
+        logger.error(f"Ошибка в successful_payment_handler: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
     finally:
         await session.close()
 
