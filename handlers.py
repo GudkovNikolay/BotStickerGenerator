@@ -1116,6 +1116,43 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
     finally:
         await session.close()
 
+# @router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
+# async def payandgenerate(callback: CallbackQuery, state: FSMContext):
+#     """Обработка оплаты с последующей генерацией"""
+    
+#     logger.info(callback.data)
+
+#     # Извлекаем цену из callback_data
+#     final_price = float(callback.data.split('_')[1])
+    
+#     # НЕ сохраняем флаг в FSM - он все равно не сохранится
+#     # Просто отправляем инвойс
+    
+#     # Создание счета
+#     prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
+    
+#     logger.info(prices)
+
+#     await callback.message.bot.send_invoice(
+#         chat_id=callback.message.chat.id,
+#         title="Пакет генераций стикеров",
+#         description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
+#         payload=f"generation_pack_{callback.from_user.id}",
+#         provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
+#         currency=settings.CURRENCY,
+#         prices=prices,
+#         start_parameter="create_sticker_pack",
+#         need_email=False,
+#         need_phone_number=False,
+#         need_shipping_address=False,
+#         is_flexible=False,
+#         photo_url="https://example.com/sticker_preview.jpg",
+#         photo_width=500,
+#         photo_height=500
+#     )
+    
+#     await callback.answer()
+
 @router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
 async def payandgenerate(callback: CallbackQuery, state: FSMContext):
     """Обработка оплаты с последующей генерацией"""
@@ -1125,14 +1162,34 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
     # Извлекаем цену из callback_data
     final_price = float(callback.data.split('_')[1])
     
-    # НЕ сохраняем флаг в FSM - он все равно не сохранится
-    # Просто отправляем инвойс
+    # Сохраняем цену в состояние
+    await state.update_data(test_payment_price=final_price)
+    
+    # Показываем выбор режима оплаты
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Реальная оплата", callback_data=f"real_pay_{final_price}")],
+        [InlineKeyboardButton(text="🧪 Тестовая оплата (без денег)", callback_data="test_pay")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_generation")]
+    ])
+    
+    await callback.message.edit_text(
+        "💳 **Выберите режим оплаты:**\n\n"
+        "• Реальная оплата - спишет деньги с карты\n"
+        "• Тестовая оплата - имитирует оплату без списания (для разработки)",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data.startswith('real_pay_'))
+async def real_pay(callback: CallbackQuery, state: FSMContext):
+    """Реальная оплата"""
+    
+    final_price = float(callback.data.split('_')[2])
     
     # Создание счета
     prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
     
-    logger.info(prices)
-
     await callback.message.bot.send_invoice(
         chat_id=callback.message.chat.id,
         title="Пакет генераций стикеров",
@@ -1150,6 +1207,45 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
         photo_width=500,
         photo_height=500
     )
+    
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "test_pay")
+async def test_pay(callback: CallbackQuery, state: FSMContext):
+    """Тестовая оплата (без реального списания)"""
+    
+    # Получаем цену из состояния
+    data = await state.get_data()
+    final_price = data.get('test_payment_price', 100)
+    
+    await callback.message.edit_text(
+        "🧪 **ТЕСТОВЫЙ РЕЖИМ**\n\n"
+        f"Оплата {final_price} ₽ не была списана. Это тест.\n\n"
+        "🎨 Начинаю генерацию..."
+    )
+    
+    # Запускаем генерацию напрямую
+    user_id = callback.from_user.id
+    pending = pending_generations.get(user_id)
+    
+    if pending:
+        grid = StickerGrid.from_dict(pending['grid'])
+        reference_photo_path = pending['reference_photo_path']
+        
+        # Удаляем из словаря
+        del pending_generations[user_id]
+        
+        # Сохраняем в состояние
+        await state.update_data(
+            grid=grid.to_dict(),
+            reference_photo_path=reference_photo_path
+        )
+        
+        # Запускаем генерацию
+        await grid_generate(callback, state)
+    else:
+        await callback.message.edit_text("❌ Ошибка: данные генерации не найдены")
     
     await callback.answer()
 
