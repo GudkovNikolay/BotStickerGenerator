@@ -1219,7 +1219,7 @@ async def test_pay(callback: CallbackQuery, state: FSMContext):
 
     # Добавляем генерации пользователю
     user = await db_service.get_or_create_user(
-        telegram_id=message.from_user.id
+        telegram_id='788139267'
     )
     
     # Обновляем количество платных генераций
@@ -1603,7 +1603,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         
         # Добавляем генерации пользователю
         user = await db_service.get_or_create_user(
-            telegram_id='788139267'
+            telegram_id=message.from_user.id
         )
         
         # Обновляем количество платных генераций
