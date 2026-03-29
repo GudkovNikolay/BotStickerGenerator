@@ -1726,10 +1726,10 @@ async def start_generation_from_payment(message: Message, state: FSMContext):
             db_service=db_service
         )
         
-        await status_message.edit_text(
-            f"✅ **Стикерпак успешно создан!**\n\n"
-            f"Все стикеры сгенерированы с вашими описаниями."
-        )
+        # await status_message.edit_text(
+        #     f"✅ **Стикерпак успешно создан!**\n\n"
+        #     f"Все стикеры сгенерированы с вашими описаниями."
+        # )
         
     except Exception as e:
         logger.error(f"Ошибка генерации: {e}")
