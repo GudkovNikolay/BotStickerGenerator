@@ -1215,6 +1215,15 @@ async def real_pay(callback: CallbackQuery, state: FSMContext):
 async def test_pay(callback: CallbackQuery, state: FSMContext):
     """Тестовая оплата (без реального списания)"""
     
+    |
+    # Добавляем генерации пользователю
+    user = await db_service.get_or_create_user(
+        telegram_id=message.from_user.id
+    )
+    
+    # Обновляем количество платных генераций
+    await db_service.add_paid_generations(user.id, 1)
+        
     # Получаем цену из состояния
     data = await state.get_data()
     final_price = data.get('test_payment_price', 100)
