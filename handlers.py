@@ -1165,6 +1165,7 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
     # Сохраняем цену в состояние
     await state.update_data(test_payment_price=final_price)
     
+    logger.info('pending_generations'*5)
     logger.info(pending_generations)
     # Показываем выбор режима оплаты
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
