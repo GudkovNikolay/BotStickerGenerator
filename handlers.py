@@ -1642,23 +1642,14 @@ async def successful_payment_handler(message: Message, state: FSMContext):
                 reference_photo_path=reference_photo_path
             )
             
-            # Отправляем сообщение о начале генерации
+            # ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ, а не редактируем старое
             await message.answer(
                 "✅ Оплата прошла успешно!\n\n"
                 "🎨 Начинаю генерацию вашего стикерпака..."
             )
             
-            # Вызываем генерацию
-            from aiogram.types import CallbackQuery
-            fake_callback = CallbackQuery(
-                id="temp",
-                from_user=message.from_user,
-                message=message,
-                data="grid_generate",
-                chat_instance="temp",
-                bot=message.bot
-            )
-            await grid_generate(fake_callback, state)
+            # Вызываем генерацию через отдельную функцию, чтобы избежать проблем с редактированием
+            await start_generation_from_payment(message, state)
         else:
             # Если это оплата из /buy (без ожидающей генерации)
             await message.answer(
@@ -1673,6 +1664,83 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)}")
     finally:
         await session.close()
+
+
+async def start_generation_from_payment(message: Message, state: FSMContext):
+    """Запуск генерации после оплаты без использования callback"""
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    grid = StickerGrid.from_dict(data.get('grid'))
+    
+    # Отправляем статус
+    status_message = await message.answer(
+        f"🔄 **Начинаю генерацию...**\n\n"
+        f"Тема: {grid.theme or 'общая'}\n"
+        f"Стикеров: {len(grid.stickers)}\n"
+        f"С индивидуальными описаниями: {sum(1 for s in grid.stickers if s['description'])}\n"
+        f"С подписями: {sum(1 for s in grid.stickers if s['caption'])}\n\n"
+        f"Это займёт около минуты."
+    )
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        user = await db_service.get_or_create_user(telegram_id=message.from_user.id)
+        
+        # Используем платную генерацию
+        await db_service.use_paid_generation(user.id)
+        
+        # Создаем промпт для генерации
+        reference_photo_path = data.get("reference_photo_path")
+        has_reference_photo = bool(reference_photo_path)
+        prompt = create_grid_prompt(grid, has_reference_photo=has_reference_photo)
+        
+        # Создаем запись о генерации
+        generation = await db_service.create_generation(user.id, prompt)
+        
+        # Генерируем изображения
+        image_generator = ImageGenerator()
+        images = await image_generator.generate_images(
+            prompt,
+            count=0,
+            grid_rows=3,
+            grid_cols=3,
+            reference_image_path=reference_photo_path,
+        )
+        
+        if not images:
+            raise Exception("Не удалось сгенерировать изображения")
+        
+        # Обрабатываем в стикеры
+        sticker_processor = StickerProcessor()
+        output_dir = settings.STICKERS_DIR / f"pack_{generation.id}"
+        stickers = await sticker_processor.process_to_stickers(images, output_dir)
+        
+        if not stickers:
+            raise Exception("Не удалось обработать стикеры")
+        
+        # Создаем стикер-пак с данными из сетки
+        await create_sticker_pack_from_grid(
+            bot=message.bot,
+            user_id=message.from_user.id,
+            stickers_paths=stickers,
+            grid=grid,
+            generation_id=generation.id,
+            db_service=db_service
+        )
+        
+        await status_message.edit_text(
+            f"✅ **Стикерпак успешно создан!**\n\n"
+            f"Все стикеры сгенерированы с вашими описаниями."
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка генерации: {e}")
+        await status_message.edit_text(f"❌ Ошибка: {str(e)}")
+    finally:
+        await session.close()
+        await state.clear()
 
 @router.message()
 async def handle_unknown(message: Message):
