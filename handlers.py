@@ -1598,11 +1598,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
     try:
         db_service = DatabaseService(session)
         
-        # Определяем количество генераций
-        if payment_info.currency == "XTR":
-            generations_to_add = payment_info.total_amount // settings.STICKER_PACK_STARS_PRICE * settings.STICKER_PACK_COUNT
-        else:
-            generations_to_add = (payment_info.total_amount // 100) // settings.STICKER_PACK_PRICE * settings.STICKER_PACK_COUNT
+        generations_to_add = 1
         
         # Добавляем генерации пользователю
         user = await db_service.get_or_create_user(
