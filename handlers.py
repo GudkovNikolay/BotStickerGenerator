@@ -28,6 +28,8 @@ from typing import Dict, Any, List
 import re
 import httpx
 from emoji_manager import EmojiManager
+from aiogram.types import ReplyKeyboardRemove
+
 logger = logging.getLogger(__name__)
 
 router = Router()
@@ -89,10 +91,16 @@ async def cmd_start(message: Message, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="🔗 Поделиться ссылкой",
-                switch_inline_query="test text balumba"#share_text  # Будет открыто окно выбора чата с этим текстом
+                switch_inline_query=share_text  # Будет открыто окно выбора чата с этим текстом
             )],
         ])
         
+        # Отправляем пустую клавиатуру, чтобы сбросить suggested action
+        await message.answer(
+            "Кнопка будет убрана",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
         await message.answer(
             welcome_text, 
             parse_mode="Markdown",
