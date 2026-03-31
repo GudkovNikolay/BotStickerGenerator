@@ -94,16 +94,16 @@ async def cmd_start(message: Message, state: FSMContext):
             )],
         ])
         
-        # Отправляем пустую клавиатуру, чтобы сбросить suggested action
-        await message.answer(
-            "",
-            reply_markup=ReplyKeyboardRemove()
-        )
+        # # Отправляем пустую клавиатуру, чтобы сбросить suggested action
+        # await message.answer(
+        #     "",
+        #     reply_markup=ReplyKeyboardRemove()
+        # )
 
         await message.answer(
             welcome_text, 
             parse_mode="Markdown",
-            reply_markup=keyboard
+            reply_markup=ReplyKeyboardRemove()#keyboard
         )
     finally:
         await session.close()
