@@ -75,7 +75,7 @@ async def cmd_start(message: Message, state: FSMContext):
         
         # Формируем текст для поделиться
         referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
-        share_text = f"Сгенерируй стикерпак с помощью этого бота\nПерейди по этой ссылке и получи скидку 50% на первый пак: {referral_link}"
+        share_text = f"Сгенерируй стикерпак с помощью этого бота\n\n\nПерейди по этой ссылке и получи скидку 50% на первый пак: {referral_link}"
         
         welcome_text = (
             f"Привет!\n\n"
@@ -243,12 +243,12 @@ async def process_card_payment(callback: CallbackQuery, state: FSMContext):
     final_price = float(callback.data.split('_')[2])
     
     # Создание счета
-    prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
+    prices = [LabeledPrice(label="Стикерпак", amount=int(final_price * 100))]
     
     await callback.message.bot.send_invoice(
         chat_id=callback.message.chat.id,
-        title="Пакет генераций стикеров",
-        description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
+        title="Стикерпак",
+        description=f"стикерпак сгенерированный по вашему описанию",
         payload=f"generation_pack_{callback.from_user.id}",
         provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
         currency=settings.CURRENCY,
