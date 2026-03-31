@@ -7,6 +7,7 @@ from database import User, Generation, Payment, ReferralReward
 from utils import generate_referral_code
 import logging
 from typing import List
+from config import settings
 
 logger = logging.getLogger(__name__)
 

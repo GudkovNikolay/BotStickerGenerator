@@ -78,10 +78,10 @@ async def cmd_start(message: Message, state: FSMContext):
         
         welcome_text = (
             f"Привет!\n\n"
-            f"Это бот для генерации стикер-паков по текстовому описанию.\n\n"
+            f"Это бот для генерации стикерпаков по текстовому описанию.\n\n"
             f"Расскажи о боте друзьям, чтобы получить скидку!\n\n"
-            f"Если друг перейдет по твоей ссылке (кнопка внизу), и ты и он получите скидку 50% на стикер-пак.\n\n"
-            f"Приведи несколько друзей, за каждого нового друга ты получаешь ещё один стикер-пак со скидкой 50%! :) \n\n"
+            f"Если друг перейдет по твоей ссылке (кнопка внизу), и ты и он получите скидку 50% на стикерпак.\n\n"
+            f"Приведи несколько друзей, за каждого нового друга ты получаешь ещё один стикерпак со скидкой 50%! :) \n\n"
             f"Сгенерируй свой первый пак с помощью команды /generate"
         )
         
@@ -220,7 +220,7 @@ async def cmd_help(message: Message):
     help_text = (
         "📖 Справка по командам:\n\n"
         "/start - Начать работу с ботом\n"
-        "/generate - Создать стикер-пак\n"
+        "/generate - Создать стикерпак\n"
         "/stats - Показать статистику\n"
         "/referral - Реферальная система\n"
         "/buy - Купить генерации\n"
@@ -1034,7 +1034,7 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
         if not stickers:
             raise Exception("Не удалось обработать стикеры")
         
-        # Создаем стикер-пак с данными из сетки
+        # Создаем стикерпак с данными из сетки
         await create_sticker_pack_from_grid(
             bot=callback.message.bot,
             user_id=callback.from_user.id,
@@ -1102,11 +1102,8 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         ])
         
         await status_message.edit_text(
-            f"⚠️ **Недостаточно генераций!**\n\n"
-            f"Для создания стикерпака необходимо:\n"
-            f"• {settings.STICKER_PACK_COUNT} генераций\n\n"
             f"💳 *Оплата*\n\n"
-            f"Пакет: {settings.STICKER_PACK_COUNT} генераций\n"
+            f"Стикерпак\n"
             f"Цена: {original_price} ₽{discount_text}\n\n"
             f"После оплаты генерация начнется автоматически.",
             reply_markup=keyboard,
@@ -1333,7 +1330,7 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
 
 async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[Path],
                                         grid: StickerGrid, generation_id: int, db_service):
-    """Создает стикер-пак с данными из сетки"""
+    """Создает стикерпак с данными из сетки"""
         # ОТЛАДКА
     logger.info(f"stickers_paths: {stickers_paths}")
     logger.info(f"len(stickers_paths): {len(stickers_paths)}")
@@ -1409,14 +1406,14 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
             if captions_text != "📝 **Подписи к стикерам:**\n":
                 await bot.send_message(
                     user_id,
-                    f"✅ **Стикер-пак создан!**\n\n"
+                    f"✅ **Стикерпак создан!**\n\n"
                     f"🔗 {pack_link}\n\n"
                     f"{captions_text}"
                 )
             else:
                 await bot.send_message(
                     user_id,
-                    f"✅ **Стикер-пак создан!**\n\n"
+                    f"✅ **Стикерпак создан!**\n\n"
                     f"🔗 {pack_link}"
                 )
             
@@ -1716,7 +1713,7 @@ async def start_generation_from_payment(message: Message, state: FSMContext):
         if not stickers:
             raise Exception("Не удалось обработать стикеры")
         
-        # Создаем стикер-пак с данными из сетки
+        # Создаем стикерпак с данными из сетки
         await create_sticker_pack_from_grid(
             bot=message.bot,
             user_id=message.from_user.id,
