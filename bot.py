@@ -9,6 +9,7 @@ from aiogram.enums import ParseMode
 from config import settings
 from database import init_db
 from handlers import router
+from bot_commands import set_bot_commands
 
 # Настройка логирования
 logging.basicConfig(
@@ -36,6 +37,8 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     
+    await set_bot_commands(bot)
+
     dp = Dispatcher()
     dp.include_router(router)
     
