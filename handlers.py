@@ -103,7 +103,7 @@ async def cmd_start(message: Message, state: FSMContext):
         await message.answer(
             welcome_text, 
             parse_mode="Markdown",
-            reply_markup=ReplyKeyboardRemove()#keyboard
+            reply_markup=keyboard
         )
     finally:
         await session.close()
