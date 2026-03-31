@@ -89,7 +89,7 @@ async def cmd_start(message: Message, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="🔗 Поделиться ссылкой",
-                # switch_inline_query_current_chat=share_text  # Будет открыто окно выбора чата с этим текстом
+                switch_inline_query="test text balumba"#share_text  # Будет открыто окно выбора чата с этим текстом
             )],
         ])
         
