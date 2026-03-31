@@ -10,6 +10,7 @@ from config import settings
 from database import init_db
 from handlers import router
 from bot_commands import set_bot_commands
+from aiogram.types import MenuButtonCommands
 
 # Настройка логирования
 logging.basicConfig(
@@ -38,6 +39,10 @@ async def main():
     )
     
     await set_bot_commands(bot)
+
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonCommands()
+    )
 
     dp = Dispatcher()
     dp.include_router(router)
