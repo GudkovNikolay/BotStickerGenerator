@@ -96,7 +96,7 @@ async def cmd_start(message: Message, state: FSMContext):
         
         # Отправляем пустую клавиатуру, чтобы сбросить suggested action
         await message.answer(
-            "Кнопка будет убрана",
+            "",
             reply_markup=ReplyKeyboardRemove()
         )
 
