@@ -1157,7 +1157,7 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
     
 #     await callback.answer()
 
-from services.yookassa_payment import create_yookassa_payment
+from yookassa_payment import create_yookassa_payment
 
 # Замените process_card_payment на:
 @router.callback_query(lambda c: c.data.startswith('pay_card_'))
@@ -1227,7 +1227,7 @@ async def check_payment_status(callback: CallbackQuery, state: FSMContext):
     
     payment_id = callback.data.split('_')[2]
     
-    from services.yookassa_payment import check_payment_status
+    from yookassa_payment import check_payment_status
     
     payment_status = check_payment_status(payment_id)
     
@@ -1328,7 +1328,7 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
     
     await callback.answer()
-    
+
 @router.callback_query(lambda c: c.data == "cancel_generation")
 async def cancel_generation(callback: CallbackQuery, state: FSMContext):
     """Отмена генерации"""
