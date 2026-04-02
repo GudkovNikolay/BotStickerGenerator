@@ -66,8 +66,8 @@ class Settings(BaseSettings):
     YOOKASSA_SECRET_KEY: str = os.getenv("YOOKASSA_SECRET_KEY", "")
     YOOKASSA_RETURN_URL: str = os.getenv("YOOKASSA_RETURN_URL", "https://t.me/your_bot")  # URL для возврата после оплаты
     YOOKASSA_WITH_RECEIPT: str = os.getenv("YOOKASSA_WITH_RECEIPT", "0")  # 1 - включать чек
-    YOOKASSA_VAT_CODE: str = int(os.getenv("YOOKASSA_VAT_CODE", "1"))  # 1 - НДС 20%
-    YOOKASSA_TAX_SYSTEM_CODE: str = int(os.getenv("YOOKASSA_TAX_SYSTEM_CODE", "1"))  # 1 - общая система
+    YOOKASSA_VAT_CODE: int = int(os.getenv("YOOKASSA_VAT_CODE", "1"))  # 1 - НДС 20%
+    YOOKASSA_TAX_SYSTEM_CODE: int = int(os.getenv("YOOKASSA_TAX_SYSTEM_CODE", "1"))  # 1 - общая система
     YOOKASSA_RECEIPT_EMAIL: str = os.getenv("YOOKASSA_RECEIPT_EMAIL", "")
     YOOKASSA_RECEIPT_PHONE: str = os.getenv("YOOKASSA_RECEIPT_PHONE", "")
 
