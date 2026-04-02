@@ -49,15 +49,18 @@ async def main():
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
+
+    logger.info(1)
     
     await set_bot_commands(bot)
-
+    logger.info(2)
     await bot.set_chat_menu_button(
         menu_button=MenuButtonCommands()
     )
     logger.info('try webhook')
     await start_webhook()
     logger.info('webhook succesful')
+
     dp = Dispatcher()
     dp.include_router(router)
     
