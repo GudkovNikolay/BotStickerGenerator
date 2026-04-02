@@ -55,9 +55,9 @@ async def main():
     await bot.set_chat_menu_button(
         menu_button=MenuButtonCommands()
     )
-
+    logger.info('try webhook')
     await start_webhook()
-    
+    logger.info('webhook succesful')
     dp = Dispatcher()
     dp.include_router(router)
     
