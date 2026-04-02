@@ -1,6 +1,6 @@
 from aiohttp import web
 import logging
-from services.yookassa_payment import get_yookassa_payment
+from yookassa_payment import get_yookassa_payment
 from database import get_session
 from db_service import DatabaseService
 
