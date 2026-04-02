@@ -236,33 +236,33 @@ async def cmd_help(message: Message):
     
     await message.answer(help_text)
 
-@router.callback_query(lambda c: c.data.startswith('pay_card_'))
-async def process_card_payment(callback: CallbackQuery, state: FSMContext):
-    """Обработка оплаты картой с учетом скидки"""
-    # Извлекаем цену из callback_data
-    final_price = float(callback.data.split('_')[2])
+# @router.callback_query(lambda c: c.data.startswith('pay_card_'))
+# async def process_card_payment(callback: CallbackQuery, state: FSMContext):
+#     """Обработка оплаты картой с учетом скидки"""
+#     # Извлекаем цену из callback_data
+#     final_price = float(callback.data.split('_')[2])
     
-    # Создание счета
-    prices = [LabeledPrice(label="Стикерпак", amount=int(final_price * 100))]
+#     # Создание счета
+#     prices = [LabeledPrice(label="Стикерпак", amount=int(final_price * 100))]
     
-    await callback.message.bot.send_invoice(
-        chat_id=callback.message.chat.id,
-        title="Стикерпак",
-        description=f"стикерпак сгенерированный по вашему описанию",
-        payload=f"generation_pack_{callback.from_user.id}",
-        provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
-        currency=settings.CURRENCY,
-        prices=prices,
-        start_parameter="create_sticker_pack",
-        need_email=False,
-        need_phone_number=False,
-        need_shipping_address=False,
-        is_flexible=False,
-        photo_url="https://example.com/sticker_preview.jpg",
-        photo_width=500,
-        photo_height=500
-    )
-    await callback.answer()
+#     await callback.message.bot.send_invoice(
+#         chat_id=callback.message.chat.id,
+#         title="Стикерпак",
+#         description=f"стикерпак сгенерированный по вашему описанию",
+#         payload=f"generation_pack_{callback.from_user.id}",
+#         provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
+#         currency=settings.CURRENCY,
+#         prices=prices,
+#         start_parameter="create_sticker_pack",
+#         need_email=False,
+#         need_phone_number=False,
+#         need_shipping_address=False,
+#         is_flexible=False,
+#         photo_url="https://example.com/sticker_preview.jpg",
+#         photo_width=500,
+#         photo_height=500
+#     )
+#     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "pay_stars")
 async def process_stars_payment(callback: CallbackQuery, state: FSMContext):
@@ -1120,43 +1120,6 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
     finally:
         await session.close()
 
-@router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
-async def payandgenerate(callback: CallbackQuery, state: FSMContext):
-    """Обработка оплаты с последующей генерацией"""
-    
-    logger.info(callback.data)
-
-    # Извлекаем цену из callback_data
-    final_price = float(callback.data.split('_')[1])
-    
-    # НЕ сохраняем флаг в FSM - он все равно не сохранится
-    # Просто отправляем инвойс
-    
-    # Создание счета
-    prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
-    
-    logger.info(prices)
-
-    await callback.message.bot.send_invoice(
-        chat_id=callback.message.chat.id,
-        title="Пакет генераций стикеров",
-        description=f"{settings.STICKER_PACK_COUNT} генераций стикеров",
-        payload=f"generation_pack_{callback.from_user.id}",
-        provider_token=settings.PAYMENTS_PROVIDER_TOKEN,
-        currency=settings.CURRENCY,
-        prices=prices,
-        start_parameter="create_sticker_pack",
-        need_email=False,
-        need_phone_number=False,
-        need_shipping_address=False,
-        is_flexible=False,
-        photo_url="https://example.com/sticker_preview.jpg",
-        photo_width=500,
-        photo_height=500
-    )
-    
-    await callback.answer()
-
 # @router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
 # async def payandgenerate(callback: CallbackQuery, state: FSMContext):
 #     """Обработка оплаты с последующей генерацией"""
@@ -1166,36 +1129,14 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
 #     # Извлекаем цену из callback_data
 #     final_price = float(callback.data.split('_')[1])
     
-#     # Сохраняем цену в состояние
-#     await state.update_data(test_payment_price=final_price)
-    
-#     logger.info('pending_generations'*5)
-#     logger.info(pending_generations)
-#     # Показываем выбор режима оплаты
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text="💰 Реальная оплата", callback_data=f"real_pay_{final_price}")],
-#         [InlineKeyboardButton(text="🧪 Тестовая оплата (без денег)", callback_data="test_pay")],
-#         [InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_generation")]
-#     ])
-    
-#     await callback.message.edit_text(
-#         "💳 **Выберите режим оплаты:**\n\n"
-#         "• Реальная оплата - спишет деньги с карты\n"
-#         "• Тестовая оплата - имитирует оплату без списания (для разработки)",
-#         reply_markup=keyboard
-#     )
-#     await callback.answer()
-
-
-# @router.callback_query(lambda c: c.data.startswith('real_pay_'))
-# async def real_pay(callback: CallbackQuery, state: FSMContext):
-#     """Реальная оплата"""
-    
-#     final_price = float(callback.data.split('_')[2])
+#     # НЕ сохраняем флаг в FSM - он все равно не сохранится
+#     # Просто отправляем инвойс
     
 #     # Создание счета
 #     prices = [LabeledPrice(label="Пакет генераций", amount=int(final_price * 100))]
     
+#     logger.info(prices)
+
 #     await callback.message.bot.send_invoice(
 #         chat_id=callback.message.chat.id,
 #         title="Пакет генераций стикеров",
@@ -1216,55 +1157,178 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
     
 #     await callback.answer()
 
+from services.yookassa_payment import create_yookassa_payment
 
-# @router.callback_query(lambda c: c.data == "test_pay")
-# async def test_pay(callback: CallbackQuery, state: FSMContext):
-#     """Тестовая оплата (без реального списания)"""
-#     session = await get_session()
-#     db_service = DatabaseService(session)
+# Замените process_card_payment на:
+@router.callback_query(lambda c: c.data.startswith('pay_card_'))
+async def process_card_payment(callback: CallbackQuery, state: FSMContext):
+    """Обработка оплаты картой через ЮKassa"""
+    
+    # Извлекаем цену из callback_data
+    final_price = float(callback.data.split('_')[2])
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        
+        user = await db_service.get_or_create_user(
+            telegram_id=callback.from_user.id
+        )
+        
+        # Создаем платеж в ЮKassa
+        payment, payment_url, payment_id = create_yookassa_payment(
+            amount_rub=int(final_price),
+            description="Стикерпак",
+            telegram_id=callback.from_user.id,
+            user_id=user.id
+        )
+        
+        # Сохраняем ID платежа в состоянии или БД для отслеживания
+        await state.update_data(
+            pending_payment_id=payment_id,
+            payment_amount=final_price
+        )
+        
+        # Создаем кнопку для перехода к оплате
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💳 Перейти к оплате",
+                url=payment_url  # Открывает платежную страницу ЮKassa
+            )],
+            [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_generation")]
+        ])
+        
+        await callback.message.edit_text(
+            f"💳 *Оплата через ЮKassa*\n\n"
+            f"Сумма к оплате: {final_price:.0f} ₽\n\n"
+            f"Нажмите на кнопку ниже, чтобы перейти к оплате.\n"
+            f"После оплаты нажмите «Проверить оплату» или подождите автоматического подтверждения.\n\n"
+            f"💰 *Важно:* Если вы уже оплатили, нажмите «Проверить оплату»",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка создания платежа: {e}")
+        await callback.message.edit_text(
+            f"❌ Ошибка при создании платежа: {str(e)}\n\n"
+            f"Пожалуйста, попробуйте позже."
+        )
+    finally:
+        await session.close()
+    
+    await callback.answer()
 
-#     # Добавляем генерации пользователю
-#     user = await db_service.get_or_create_user(
-#         telegram_id='788139267'
-#     )
+# Добавьте обработчик проверки оплаты
+@router.callback_query(lambda c: c.data.startswith('check_payment_'))
+async def check_payment_status(callback: CallbackQuery, state: FSMContext):
+    """Проверка статуса оплаты"""
     
-#     # Обновляем количество платных генераций
-#     await db_service.add_paid_generations(user.id, 1)
+    payment_id = callback.data.split('_')[2]
+    
+    from services.yookassa_payment import check_payment_status
+    
+    payment_status = check_payment_status(payment_id)
+    
+    if payment_status['paid'] and payment_status['status'] == 'succeeded':
+        # Оплата успешна
+        user_id = callback.from_user.id
         
-#     # Получаем цену из состояния
-#     data = await state.get_data()
-#     final_price = data.get('test_payment_price', 100)
-    
-#     await callback.message.edit_text(
-#         "🧪 **ТЕСТОВЫЙ РЕЖИМ**\n\n"
-#         f"Оплата {final_price} ₽ не была списана. Это тест.\n\n"
-#         "🎨 Начинаю генерацию..."
-#     )
-    
-#     # Запускаем генерацию напрямую
-#     user_id = callback.from_user.id
-#     pending = pending_generations.get(user_id)
-    
-#     if pending:
-#         grid = StickerGrid.from_dict(pending['grid'])
-#         reference_photo_path = pending['reference_photo_path']
+        # Проверяем, есть ли ожидающая генерация
+        pending = pending_generations.get(user_id)
         
-#         # Удаляем из словаря
-#         del pending_generations[user_id]
-        
-#         # Сохраняем в состояние
-#         await state.update_data(
-#             grid=grid.to_dict(),
-#             reference_photo_path=reference_photo_path
-#         )
-        
-#         # Запускаем генерацию
-#         await grid_generate(callback, state)
-#     else:
-#         await callback.message.edit_text("❌ Ошибка: данные генерации не найдены")
+        if pending:
+            # Получаем сохраненные данные
+            grid = StickerGrid.from_dict(pending['grid'])
+            reference_photo_path = pending['reference_photo_path']
+            
+            # Удаляем из словаря
+            del pending_generations[user_id]
+            
+            # Сохраняем в состояние
+            await state.update_data(
+                grid=grid.to_dict(),
+                reference_photo_path=reference_photo_path
+            )
+            
+            await callback.message.edit_text(
+                "✅ Оплата подтверждена!\n\n"
+                "🎨 Начинаю генерацию вашего стикерпака..."
+            )
+            
+            # Запускаем генерацию
+            await start_generation_from_payment(callback.message, state)
+        else:
+            await callback.message.edit_text(
+                "✅ Оплата подтверждена!\n\n"
+                "Используйте /generate для создания стикерпака!"
+            )
+    elif payment_status['status'] == 'pending':
+        await callback.answer(
+            "⏳ Оплата еще не подтверждена. Пожалуйста, подождите или проверьте позже.",
+            show_alert=True
+        )
+    else:
+        await callback.answer(
+            f"❌ Оплата не найдена или отменена. Статус: {payment_status['status']}",
+            show_alert=True
+        )
     
-#     await callback.answer()
+    await callback.answer()
 
+# Замените payandgenerate на новую версию
+@router.callback_query(lambda c: c.data.startswith('payandgenerate_'))
+async def payandgenerate(callback: CallbackQuery, state: FSMContext):
+    """Обработка оплаты с последующей генерацией через ЮKassa"""
+    
+    # Извлекаем цену из callback_data
+    final_price = float(callback.data.split('_')[1])
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        
+        user = await db_service.get_or_create_user(
+            telegram_id=callback.from_user.id
+        )
+        
+        # Сохраняем данные генерации в глобальный словарь (уже есть pending_generations)
+        # Данные уже сохранены в show_payment_screen
+        
+        # Создаем платеж в ЮKassa
+        payment, payment_url, payment_id = create_yookassa_payment(
+            amount_rub=int(final_price),
+            description="Стикерпак",
+            telegram_id=callback.from_user.id,
+            user_id=user.id
+        )
+        
+        # Сохраняем ID платежа
+        await state.update_data(pending_payment_id=payment_id)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)],
+            [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_payment_{payment_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_generation")]
+        ])
+        
+        await callback.message.edit_text(
+            f"💳 *Оплата через ЮKassa*\n\n"
+            f"Сумма: {final_price:.0f} ₽\n\n"
+            f"Нажмите «Оплатить», чтобы перейти к платежной странице.\n"
+            f"После оплаты нажмите «Проверить оплату».\n\n"
+            f"*Важно:* Оплата должна быть подтверждена для начала генерации.",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка создания платежа: {e}")
+        await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
+    
+    await callback.answer()
+    
 @router.callback_query(lambda c: c.data == "cancel_generation")
 async def cancel_generation(callback: CallbackQuery, state: FSMContext):
     """Отмена генерации"""

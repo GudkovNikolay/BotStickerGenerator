@@ -11,6 +11,7 @@ from database import init_db
 from handlers import router
 from bot_commands import set_bot_commands
 from aiogram.types import MenuButtonCommands
+from webhook_handler import yookassa_webhook
 
 # Настройка логирования
 logging.basicConfig(
@@ -24,6 +25,17 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Добавьте в основной файл бота
+async def start_webhook():
+    app = web.Application()
+    app.router.add_post('/yookassa-webhook', yookassa_webhook)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    await site.start()
+    
+    logger.info("Webhook server started on port 8000")
 
 async def main():
     """Главная функция запуска бота"""
@@ -44,6 +56,8 @@ async def main():
         menu_button=MenuButtonCommands()
     )
 
+    await start_webhook()
+    
     dp = Dispatcher()
     dp.include_router(router)
     
