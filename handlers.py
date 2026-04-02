@@ -1135,7 +1135,7 @@ from yookassa_payment import create_yookassa_payment
 
 @router.callback_query(lambda c: c.data.startswith('pay_card_'))
 async def process_card_payment(callback: CallbackQuery, state: FSMContext):
-    """Обработка оплаты картой через ЮKassa"""
+    """Обработка оплаты картой через ЮKassa - сразу открываем платежную страницу"""
     
     # Извлекаем цену из callback_data
     final_price = float(callback.data.split('_')[2])
@@ -1148,7 +1148,7 @@ async def process_card_payment(callback: CallbackQuery, state: FSMContext):
             telegram_id=callback.from_user.id
         )
         
-        # Создаем платеж в ЮKassa
+        # Создаем платеж в ЮKassa с URL для редиректа
         payment, payment_url, payment_id = create_yookassa_payment(
             amount_rub=int(final_price),
             description="Стикерпак",
@@ -1156,35 +1156,34 @@ async def process_card_payment(callback: CallbackQuery, state: FSMContext):
             user_id=user.id
         )
         
-        # Сохраняем ID платежа в состоянии для отслеживания
+        # Сохраняем ID платежа
         await state.update_data(
             pending_payment_id=payment_id,
             payment_amount=final_price
         )
         
-        # УБИРАЕМ кнопку проверки, оставляем только кнопку оплаты
+        # Сразу показываем кнопку с ссылкой на оплату
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="💳 Перейти к оплате",
-                url=payment_url
+                url=payment_url  # Прямая ссылка на ЮKassa
             )],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_generation")]
         ])
         
-        # Запускаем фоновую задачу для проверки статуса платежа
+        # Запускаем фоновую проверку платежа
         asyncio.create_task(check_payment_background(
             payment_id=payment_id,
             user_id=callback.from_user.id,
-            state=state,
             chat_id=callback.message.chat.id,
             message_id=callback.message.message_id
         ))
         
         await callback.message.edit_text(
             f"💳 *Оплата через ЮKassa*\n\n"
-            f"Сумма к оплате: {final_price:.0f} ₽\n\n"
+            f"Сумма: {final_price:.0f} ₽\n\n"
             f"Нажмите на кнопку ниже, чтобы перейти к оплате.\n"
-            f"После оплаты генерация начнется автоматически в течение нескольких секунд.\n\n"
+            f"После оплаты генерация начнется автоматически.\n\n"
             f"*Важно:* Не закрывайте это окно до завершения оплаты.",
             reply_markup=keyboard,
             parse_mode="Markdown"
@@ -1192,25 +1191,21 @@ async def process_card_payment(callback: CallbackQuery, state: FSMContext):
         
     except Exception as e:
         logger.error(f"Ошибка создания платежа: {e}")
-        await callback.message.edit_text(
-            f"❌ Ошибка при создании платежа: {str(e)}\n\n"
-            f"Пожалуйста, попробуте позже."
-        )
+        await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
     finally:
         await session.close()
     
     await callback.answer()
 
+# Замените функцию check_payment_background на эту:
 
-# Добавьте эту функцию для фоновой проверки платежа:
-
-async def check_payment_background(payment_id: str, user_id: int, state: FSMContext, chat_id: int, message_id: int):
+async def check_payment_background(payment_id: str, user_id: int, chat_id: int, message_id: int):
     """Фоновая проверка статуса платежа"""
     from yookassa_payment import check_payment_status
     
-    # Проверяем каждые 3 секунды в течение 5 минут
-    max_checks = 100  # 100 * 3 = 300 секунд = 5 минут
-    check_interval = 3
+    # Проверяем каждые 2 секунды в течение 3 минут
+    max_checks = 90  # 90 * 2 = 180 секунд = 3 минуты
+    check_interval = 2
     
     for _ in range(max_checks):
         await asyncio.sleep(check_interval)
@@ -1219,18 +1214,12 @@ async def check_payment_background(payment_id: str, user_id: int, state: FSMCont
             payment_status = check_payment_status(payment_id)
             
             if payment_status['paid'] and payment_status['status'] == 'succeeded':
-                # Оплата успешна
                 logger.info(f"Платеж {payment_id} успешно подтвержден для пользователя {user_id}")
                 
                 # Получаем данные из глобального словаря
                 pending = pending_generations.get(user_id)
                 
-                # Создаем новое состояние для обработки
-                new_state = FSMContext(
-                    storage=state.storage,
-                    chat_id=chat_id,
-                    user_id=user_id
-                )
+                bot = Bot(token=settings.BOT_TOKEN)
                 
                 if pending:
                     # Получаем сохраненные данные
@@ -1240,41 +1229,38 @@ async def check_payment_background(payment_id: str, user_id: int, state: FSMCont
                     # Удаляем из словаря
                     del pending_generations[user_id]
                     
-                    # Сохраняем в состояние
-                    await new_state.update_data(
-                        grid=grid.to_dict(),
-                        reference_photo_path=reference_photo_path
-                    )
-                    
                     # Отправляем сообщение пользователю
-                    bot = Bot(token=settings.BOT_TOKEN)
                     await bot.send_message(
                         chat_id=chat_id,
                         text="✅ Оплата подтверждена!\n\n🎨 Начинаю генерацию вашего стикерпака..."
                     )
                     
-                    # Создаем фейковое сообщение для запуска генерации
-                    class FakeMessage:
-                        def __init__(self, chat_id, bot, from_user_id):
-                            self.chat = type('obj', (object,), {'id': chat_id})
-                            self.bot = bot
-                            self.from_user = type('obj', (object,), {'id': from_user_id})
-                            self.message_id = 0
-                    
-                    fake_message = FakeMessage(chat_id, bot, user_id)
-                    
-                    # Запускаем генерацию
-                    await start_generation_from_payment(fake_message, new_state)
+                    # Запускаем генерацию напрямую
+                    await start_generation_direct(
+                        chat_id=chat_id,
+                        user_id=user_id,
+                        grid=grid,
+                        reference_photo_path=reference_photo_path,
+                        bot=bot
+                    )
                     
                 else:
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text="✅ Оплата подтверждена!\n\nИспользуйте /generate для создания стикерпака!"
-                    )
+                    # Просто добавляем платные генерации
+                    session = await get_session()
+                    try:
+                        db_service = DatabaseService(session)
+                        user = await db_service.get_or_create_user(telegram_id=user_id)
+                        await db_service.add_paid_generations(user.id, 1)
+                        
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text=f"✅ Оплата подтверждена!\n\nДобавлена 1 платная генерация.\nИспользуйте /generate для создания стикерпака!"
+                        )
+                    finally:
+                        await session.close()
                 
-                # Обновляем сообщение с оплатой
+                # Обновляем сообщение с оплатой (убираем кнопки)
                 try:
-                    bot = Bot(token=settings.BOT_TOKEN)
                     await bot.edit_message_reply_markup(
                         chat_id=chat_id,
                         message_id=message_id,
@@ -1303,6 +1289,81 @@ async def check_payment_background(payment_id: str, user_id: int, state: FSMCont
     except:
         pass
 
+
+# Добавьте эту новую функцию для прямой генерации:
+
+async def start_generation_direct(chat_id: int, user_id: int, grid: StickerGrid, reference_photo_path: str, bot: Bot):
+    """Прямой запуск генерации без FSM"""
+    
+    session = await get_session()
+    try:
+        db_service = DatabaseService(session)
+        user = await db_service.get_or_create_user(telegram_id=user_id)
+        
+        # Используем платную генерацию
+        await db_service.use_paid_generation(user.id)
+        
+        # Отправляем статус
+        status_msg = await bot.send_message(
+            chat_id,
+            f"🔄 **Начинаю генерацию...**\n\n"
+            f"Тема: {grid.theme or 'общая'}\n"
+            f"Стикеров: {len(grid.stickers)}\n"
+            f"С индивидуальными описаниями: {sum(1 for s in grid.stickers if s['description'])}\n"
+            f"С подписями: {sum(1 for s in grid.stickers if s['caption'])}\n\n"
+            f"Это займёт около минуты."
+        )
+        
+        # Создаем промпт для генерации
+        has_reference_photo = bool(reference_photo_path)
+        prompt = create_grid_prompt(grid, has_reference_photo=has_reference_photo)
+        
+        # Создаем запись о генерации
+        generation = await db_service.create_generation(user.id, prompt)
+        
+        # Генерируем изображения
+        image_generator = ImageGenerator()
+        images = await image_generator.generate_images(
+            prompt,
+            count=0,
+            grid_rows=3,
+            grid_cols=3,
+            reference_image_path=reference_photo_path,
+        )
+        
+        if not images:
+            raise Exception("Не удалось сгенерировать изображения")
+        
+        # Обрабатываем в стикеры
+        sticker_processor = StickerProcessor()
+        output_dir = settings.STICKERS_DIR / f"pack_{generation.id}"
+        stickers = await sticker_processor.process_to_stickers(images, output_dir)
+        
+        if not stickers:
+            raise Exception("Не удалось обработать стикеры")
+        
+        # Создаем стикерпак
+        await create_sticker_pack_from_grid(
+            bot=bot,
+            user_id=user_id,
+            stickers_paths=stickers,
+            grid=grid,
+            generation_id=generation.id,
+            db_service=db_service
+        )
+        
+        await bot.edit_message_text(
+            "✅ **Стикерпак успешно создан!**",
+            chat_id=chat_id,
+            message_id=status_msg.message_id
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка генерации: {e}")
+        await bot.send_message(chat_id, f"❌ Ошибка: {str(e)}")
+    finally:
+        await session.close()
+        
 # Добавьте обработчик проверки оплаты
 @router.callback_query(lambda c: c.data.startswith('check_payment_'))
 async def check_payment_status(callback: CallbackQuery, state: FSMContext):
