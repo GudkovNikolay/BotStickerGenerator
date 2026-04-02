@@ -412,6 +412,7 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
         )
     except:
         pass
+        
 
 
 @router.message(Command("help"))
