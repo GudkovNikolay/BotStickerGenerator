@@ -12,6 +12,7 @@ from handlers import router
 from bot_commands import set_bot_commands
 from aiogram.types import MenuButtonCommands
 from webhook_handler import yookassa_webhook
+from aiohttp import web
 
 # Настройка логирования
 logging.basicConfig(
