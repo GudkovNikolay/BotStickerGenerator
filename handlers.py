@@ -1188,7 +1188,7 @@ async def process_card_payment(callback: CallbackQuery, state: FSMContext):
     
     await callback.answer()
 
-async def check_payment_background(payment_id: str, user_id: int, chat_id: int, message_id: int):
+async def check_payment_background(payment_id: str, user_id: int, chat_id: int, message_id: int, state=None):
     """Фоновая проверка статуса платежа"""
     from yookassa_payment import check_payment_status
     
@@ -1461,7 +1461,7 @@ async def payandgenerate(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
     
     await callback.answer()
-    
+
 @router.callback_query(lambda c: c.data == "cancel_generation")
 async def cancel_generation(callback: CallbackQuery, state: FSMContext):
     """Отмена генерации"""
