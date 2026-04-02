@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     STICKERS_DIR: Path = BASE_DIR / "generated_stickers"
     TEMP_DIR: Path = BASE_DIR / "temp_images"
     
+    # ЮKassa настройки
+    YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "")
+    YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "")
+    YOOKASSA_RETURN_URL = os.getenv("YOOKASSA_RETURN_URL", "https://t.me/your_bot")  # URL для возврата после оплаты
+    YOOKASSA_WITH_RECEIPT = os.getenv("YOOKASSA_WITH_RECEIPT", "0")  # 1 - включать чек
+    YOOKASSA_VAT_CODE = int(os.getenv("YOOKASSA_VAT_CODE", "1"))  # 1 - НДС 20%
+    YOOKASSA_TAX_SYSTEM_CODE = int(os.getenv("YOOKASSA_TAX_SYSTEM_CODE", "1"))  # 1 - общая система
+    YOOKASSA_RECEIPT_EMAIL = os.getenv("YOOKASSA_RECEIPT_EMAIL", "")
+    YOOKASSA_RECEIPT_PHONE = os.getenv("YOOKASSA_RECEIPT_PHONE", "")
+
     @property
     def admin_ids(self) -> list[int]:
         """Список ID администраторов"""
