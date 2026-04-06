@@ -45,6 +45,98 @@ class GenerationStates(StatesGroup):
     waiting_for_form_data = State()  # Ожидание заполненной формы
     confirming_form = State()        # Подтверждение формы
 
+# Состояния FSM для сетки
+class StickerGridStates(StatesGroup):
+    waiting_for_theme = State()
+    waiting_for_sticker_edit = State()
+    waiting_for_description = State()
+    waiting_for_caption = State()
+    waiting_for_emoji = State()
+    confirming = State()
+    waiting_for_reference_photo = State()
+    waiting_for_emoji_input = State()
+
+class StickerGrid:
+    """Класс для управления сеткой стикеров"""
+    
+    def __init__(self, total_stickers: int = 5):
+        self.theme = None#"Не выбрана"
+        self.stickers = []
+        self.total_stickers = total_stickers
+        self.current_editing = 0
+        
+        # Инициализируем стикеры пустыми значениями
+        for i in range(total_stickers):
+            self.stickers.append({
+                'description': '',  # Пустое описание по умолчанию
+                'caption': '',
+                'emoji': EmojiManager.get_random_emoji()  # Случайный эмодзи
+            })
+    
+    def to_dict(self):
+        return {
+            'theme': self.theme,
+            'stickers': self.stickers,
+            'total_stickers': self.total_stickers,
+            'current_editing': self.current_editing
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        if not data:
+            return cls(5)
+        grid = cls(data.get('total_stickers', 5))
+        grid.theme = data.get('theme', 'Не выбрана')
+        grid.stickers = data.get('stickers', [])
+        grid.current_editing = data.get('current_editing', 0)
+        return grid
+    
+    def has_description(self, index: int) -> bool:
+        """Проверяет, есть ли описание у стикера"""
+        return bool(self.stickers[index]['description'].strip())
+    
+    def get_sticker_summary(self, index: int) -> str:
+        """Возвращает краткое описание стикера"""
+        sticker = self.stickers[index]
+        if sticker['description']:
+            desc = sticker['description'][:15] + ('...' if len(sticker['description']) > 15 else '')
+        else:
+            desc = "🔹 не задано"
+        caption = f" 💬 {sticker['caption'][:10]}..." if sticker['caption'] else ""
+        return f"{sticker['emoji']} {desc}{caption}"
+    
+    def get_grid_display(self) -> str:
+        """Возвращает отображение всей сетки"""
+        display = f"📋 **Текущее состояние стикеров**\n"
+        display += f"📌 **Тема:** {self.theme}\n\n"
+        display += "💡 *Описания можно не заполнять - тогда стикеры будут на общую тему*\n\n"
+        
+        # Создаем сетку 3x3 (или меньше)
+        for i in range(0, self.total_stickers, 3):
+            row = []
+            for j in range(3):
+                if i + j < self.total_stickers:
+                    idx = i + j
+                    sticker = self.stickers[idx]
+                    # Показываем эмодзи и индикатор заполненности
+                    # indicator = "✅" if sticker['description'] else "⬜"
+                    row.append(f"[{idx+1}] {sticker['emoji']}")
+                else:
+                    row.append("[ ]")
+            display += " | ".join(row) + "\n"
+        
+        display += "\n" + "─" * 30 + "\n"
+        
+        # Детали каждого стикера
+        for i, sticker in enumerate(self.stickers):
+            if sticker['description']:
+                display += f"\n**{i+1}.** {sticker['emoji']} *{sticker['description']}*"
+            else:
+                display += f"\n**{i+1}.** {sticker['emoji']} *будет на общую тему*"
+            if sticker['caption']:
+                display += f"\n    💬 Надпись на стикере: {sticker['caption']}"
+        
+        return display
 
 
 @router.message(CommandStart())
@@ -558,99 +650,6 @@ async def cmd_history(message: Message):
     finally:
         await session.close()
 
-# ============= НОВЫЙ КОД ДЛЯ СЕТКИ СТИКЕРОВ =============
-# Состояния FSM для сетки
-class StickerGridStates(StatesGroup):
-    waiting_for_theme = State()
-    waiting_for_sticker_edit = State()
-    waiting_for_description = State()
-    waiting_for_caption = State()
-    waiting_for_emoji = State()
-    confirming = State()
-    waiting_for_reference_photo = State()
-    waiting_for_emoji_input = State()
-
-class StickerGrid:
-    """Класс для управления сеткой стикеров"""
-    
-    def __init__(self, total_stickers: int = 5):
-        self.theme = None#"Не выбрана"
-        self.stickers = []
-        self.total_stickers = total_stickers
-        self.current_editing = 0
-        
-        # Инициализируем стикеры пустыми значениями
-        for i in range(total_stickers):
-            self.stickers.append({
-                'description': '',  # Пустое описание по умолчанию
-                'caption': '',
-                'emoji': EmojiManager.get_random_emoji()  # Случайный эмодзи
-            })
-    
-    def to_dict(self):
-        return {
-            'theme': self.theme,
-            'stickers': self.stickers,
-            'total_stickers': self.total_stickers,
-            'current_editing': self.current_editing
-        }
-    
-    @classmethod
-    def from_dict(cls, data):
-        if not data:
-            return cls(5)
-        grid = cls(data.get('total_stickers', 5))
-        grid.theme = data.get('theme', 'Не выбрана')
-        grid.stickers = data.get('stickers', [])
-        grid.current_editing = data.get('current_editing', 0)
-        return grid
-    
-    def has_description(self, index: int) -> bool:
-        """Проверяет, есть ли описание у стикера"""
-        return bool(self.stickers[index]['description'].strip())
-    
-    def get_sticker_summary(self, index: int) -> str:
-        """Возвращает краткое описание стикера"""
-        sticker = self.stickers[index]
-        if sticker['description']:
-            desc = sticker['description'][:15] + ('...' if len(sticker['description']) > 15 else '')
-        else:
-            desc = "🔹 не задано"
-        caption = f" 💬 {sticker['caption'][:10]}..." if sticker['caption'] else ""
-        return f"{sticker['emoji']} {desc}{caption}"
-    
-    def get_grid_display(self) -> str:
-        """Возвращает отображение всей сетки"""
-        display = f"📋 **Текущее состояние стикеров**\n"
-        display += f"📌 **Тема:** {self.theme}\n\n"
-        display += "💡 *Описания можно не заполнять - тогда стикеры будут на общую тему*\n\n"
-        
-        # Создаем сетку 3x3 (или меньше)
-        for i in range(0, self.total_stickers, 3):
-            row = []
-            for j in range(3):
-                if i + j < self.total_stickers:
-                    idx = i + j
-                    sticker = self.stickers[idx]
-                    # Показываем эмодзи и индикатор заполненности
-                    # indicator = "✅" if sticker['description'] else "⬜"
-                    row.append(f"[{idx+1}] {sticker['emoji']}")
-                else:
-                    row.append("[ ]")
-            display += " | ".join(row) + "\n"
-        
-        display += "\n" + "─" * 30 + "\n"
-        
-        # Детали каждого стикера
-        for i, sticker in enumerate(self.stickers):
-            if sticker['description']:
-                display += f"\n**{i+1}.** {sticker['emoji']} *{sticker['description']}*"
-            else:
-                display += f"\n**{i+1}.** {sticker['emoji']} *будет на общую тему*"
-            if sticker['caption']:
-                display += f"\n    💬 Надпись на стикере: {sticker['caption']}"
-        
-        return display
 
 
 # Найдите и замените существующий обработчик команды /grid
