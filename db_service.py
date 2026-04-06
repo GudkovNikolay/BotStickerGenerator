@@ -104,44 +104,52 @@ class DatabaseService:
         )
         await self.session.commit()
     
-    async def process_referral(self, referrer_code: str, referred_user_id: int) -> bool:
-        """Обработка реферального кода"""
-        result = await self.session.execute(
-            select(User).where(User.referral_code == referrer_code)
-        )
-        referrer = result.scalar_one_or_none()
-        
-        if not referrer or referrer.id == referred_user_id:
-            return False
-        
-        # Проверяем, не использовал ли уже этот пользователь реферальный код
-        result = await self.session.execute(
-            select(User).where(User.id == referred_user_id)
-        )
-        referred_user = result.scalar_one_or_none()
-        
-        if not referred_user:
-            return False
-        
-        if referred_user.referred_by is not None:
-            return False  # Уже использовал реферальный код
-        
-        # Назначаем реферера
-        referred_user.referred_by = referrer.id
-        # Даем бонус рефереру (например, +1 бесплатная генерация)
-        referrer.free_generations_left += 1
-        
-        # Создаем запись о награде
-        reward = ReferralReward(
-            referrer_id=referrer.id,
-            referred_id=referred_user_id,
-            reward_amount=1,
-            reward_type="generation"
-        )
-        self.session.add(reward)
-        
-        await self.session.commit()
-        return True
+async def process_referral(self, referrer_code: str, referred_user_id: int) -> bool:
+    """Обработка реферального кода - создаем купон скидки для реферера"""
+    from database import User, DiscountCoupon
+    
+    result = await self.session.execute(
+        select(User).where(User.referral_code == referrer_code)
+    )
+    referrer = result.scalar_one_or_none()
+    
+    if not referrer or referrer.id == referred_user_id:
+        return False
+    
+    # Проверяем, не использовал ли уже этот пользователь реферальный код
+    result = await self.session.execute(
+        select(User).where(User.id == referred_user_id)
+    )
+    referred_user = result.scalar_one_or_none()
+    
+    if not referred_user:
+        return False
+    
+    if referred_user.referred_by is not None:
+        return False  # Уже использовал реферальный код
+    
+    # Назначаем реферера
+    referred_user.referred_by = referrer.id
+    
+    # ✅ СОЗДАЕМ КУПОН СКИДКИ ДЛЯ РЕФЕРЕРА (сразу, при переходе)
+    coupon = DiscountCoupon(
+        user_id=referrer.id,  # Владелец купона - реферер
+        source_user_id=referred_user_id,  # Источник - новый пользователь
+        used=False
+    )
+    self.session.add(coupon)
+    
+    # Создаем запись о награде
+    reward = ReferralReward(
+        referrer_id=referrer.id,
+        referred_id=referred_user_id,
+        reward_amount=1,
+        reward_type="generation"
+    )
+    self.session.add(reward)
+    
+    await self.session.commit()
+    return True
     
     async def get_user_stats(self, user_id: int) -> dict:
         """Получить статистику пользователя"""
@@ -158,7 +166,8 @@ class DatabaseService:
                 "referrals_count": 0,
                 "referral_code": "",
                 "is_premium": False,
-                "paid_generations_left": 0
+                "paid_generations_left": 0,
+                "available_discount_coupons": 0  # Добавляем
             }
         
         generations_result = await self.session.execute(
@@ -182,6 +191,9 @@ class DatabaseService:
         )
         referrals_count = referrals_result.scalar() or 0
         
+        # Получаем количество доступных купонов
+        available_coupons = await self.get_available_coupons_count(user_id)
+        
         return {
             "free_generations_left": user.free_generations_left,
             "total_generations": total_generations,
@@ -189,47 +201,83 @@ class DatabaseService:
             "referrals_count": referrals_count,
             "referral_code": user.referral_code,
             "is_premium": user.is_premium,
-            "paid_generations_left": user.paid_generations_left
+            "paid_generations_left": user.paid_generations_left,
+            "available_discount_coupons": available_coupons  # Добавляем
         }
-
-# В db_service.py
 
     async def get_user_discount(self, user_id: int) -> dict:
         """
         Возвращает информацию о скидке пользователя
+        Проверяет наличие неиспользованных купонов
         """
-        # Получаем пользователя
-        user = await self.get_user_by_id(user_id)
-        if not user:
-            return {'has_discount': False, 'discount_percent': 0}
+        from database import DiscountCoupon
         
-        # Проверяем, есть ли активные реферальные бонусы
-        # Вариант 1: Скидка за рефералов (50%)
-        referrals_count = await self.get_referrals_count(user_id)
+        # Считаем количество неиспользованных купонов
+        result = await self.session.execute(
+            select(func.count(DiscountCoupon.id))
+            .where(
+                DiscountCoupon.user_id == user_id,
+                DiscountCoupon.used == False
+            )
+        )
+        available_coupons = result.scalar() or 0
         
-        if referrals_count > 0:
+        if available_coupons > 0:
             return {
                 'has_discount': True,
                 'discount_percent': 50,
-                'reason': f'Привел {referrals_count} друзей',
+                'available_coupons': available_coupons,  # Сколько купонов доступно
+                'reason': f'У вас {available_coupons} неиспользованных купонов на скидку 50%',
                 'original_price': settings.STICKER_PACK_PRICE,
                 'final_price': settings.STICKER_PACK_PRICE * 0.5
             }
         
-        # Вариант 2: Скидка если сам перешел по реферальной ссылке
-        # (нужно поле в таблице users: referred_by)
-        if user.referred_by:
-            return {
-                'has_discount': True,
-                'discount_percent': 50,
-                'reason': 'Пришел по реферальной ссылке',
-                'original_price': settings.STICKER_PACK_PRICE,
-                'final_price': settings.STICKER_PACK_PRICE * 0.5
-            }
+        return {
+            'has_discount': False,
+            'discount_percent': 0,
+            'available_coupons': 0
+        }
+    async def use_discount_coupon(self, user_id: int) -> bool:
+        """
+        Использовать один купон скидки при оплате
+        Возвращает True, если купон успешно использован
+        """
+        from database import DiscountCoupon
         
-        return {'has_discount': False, 'discount_percent': 0}
+        # Находим один неиспользованный купон
+        result = await self.session.execute(
+            select(DiscountCoupon)
+            .where(
+                DiscountCoupon.user_id == user_id,
+                DiscountCoupon.used == False
+            )
+            .limit(1)
+        )
+        coupon = result.scalar_one_or_none()
+        
+        if not coupon:
+            return False
 
-
+    async def get_available_coupons_count(self, user_id: int) -> int:
+        """Получить количество доступных купонов скидки"""
+        from database import DiscountCoupon
+        
+        result = await self.session.execute(
+            select(func.count(DiscountCoupon.id))
+            .where(
+                DiscountCoupon.user_id == user_id,
+                DiscountCoupon.used == False
+            )
+        )
+        return result.scalar() or 0
+        
+        # Отмечаем купон как использованный
+        coupon.used = True
+        coupon.used_at = func.now()
+        
+        await self.session.commit()
+        return True
+        
     async def get_referrals_count(self, user_id: int) -> int:
         """Возвращает количество рефералов пользователя"""
         from database import User

@@ -40,7 +40,28 @@ class User(Base):
     # Индексы создаются автоматически через index=True в колонках
     # telegram_id и referral_code уже имеют index=True
 
+# Добавьте эту модель после модели User
 
+class DiscountCoupon(Base):
+    """Модель купона на скидку (один купон = одна скидка 50%)"""
+    __tablename__ = "discount_coupons"
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Владелец купона
+    source_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # От какого реферала получен
+    used = Column(Boolean, default=False)  # Использован ли купон
+    used_at = Column(DateTime, nullable=True)  # Когда использован
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], backref="discount_coupons")
+    source_user = relationship("User", foreign_keys=[source_user_id])
+    
+    __table_args__ = (
+        Index("idx_coupon_user_id", "user_id"),
+        Index("idx_coupon_used", "used"),
+    )
+    
 class Generation(Base):
     """Модель генерации стикеров"""
     __tablename__ = "generations"

@@ -212,7 +212,7 @@ async def cmd_stats(message: Message):
         )
         
         stats = await db_service.get_user_stats(user.id)
-        # Получаем username бота
+        
         bot_info = await message.bot.get_me()
         bot_username = bot_info.username
 
@@ -224,14 +224,13 @@ async def cmd_stats(message: Message):
             f"📦 Всего генераций: {stats['total_generations']}\n"
             f"✅ Успешных: {stats['completed_generations']}\n"
             f"👥 Рефералов: {stats['referrals_count']}\n"
+            f"🎫 Купонов на скидку 50%: {stats['available_discount_coupons']}\n"  # Добавляем
             f"🎫 Реферальная ссылка: `{referral_link}`\n"
-            # f"{'⭐ Premium статус: активен' if stats['is_premium'] else ''}"
         )
         
         await message.answer(stats_text, parse_mode="Markdown")
     finally:
         await session.close()
-
 
 @router.message(Command("referral"))
 async def cmd_referral(message: Message):
@@ -246,24 +245,23 @@ async def cmd_referral(message: Message):
         
         stats = await db_service.get_user_stats(user.id)
         
-        # Получаем username бота правильно
         bot_info = await message.bot.get_me()
         bot_username = bot_info.username
         
         referral_text = (
             f"🎁 Реферальная система\n\n"
-
+            f"За каждого друга, который перейдет по твоей ссылке, ТЫ получаешь КУПОН на скидку 50%!\n"
+            f"Купон можно использовать при оплате стикерпака.\n"
+            f"Купоны накапливаются - чем больше друзей, тем больше скидок!\n\n"
             f"Поделись ссылкой с друзьями:\n"
             f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
-            f"За каждого друга, который использует твой код, и ты и он получите скидку 50% на стикерпак\n\n"
-            # f"• +1 бесплатная генерация\n\n"
-            # f"Всего рефералов: {stats['referrals_count']}"
+            f"👥 Твоих рефералов: {stats['referrals_count']}\n"
+            f"🎫 Доступна скидка на {stats['available_discount_coupons']} стикерпаков"
         )
         
         await message.answer(referral_text, parse_mode="Markdown")
     finally:
         await session.close()
-
 
 # ============= ЗАМЕНИТЕ ФУНКЦИЮ cmd_buy =============
 @router.message(Command("buy"))
@@ -334,13 +332,12 @@ async def cmd_buy(message: Message, state: FSMContext):
         await session.close()
 
 
-# ============= ЗАМЕНИТЕ ФУНКЦИЮ show_payment_screen =============
 async def show_payment_screen(message: Message, state: FSMContext, grid: StickerGrid, status_message: Message, reference_photo_path: str = None):
-    """Показывает экран оплаты - СРАЗУ создаем платеж"""
+    """Показывает экран оплаты - использует купон скидки"""
     
     user_id = message.chat.id
     
-    # Сохраняем данные в ГЛОБАЛЬНЫЙ СЛОВАРЬ
+    # Сохраняем данные в глобальный словарь
     pending_generations[user_id] = {
         'grid': grid.to_dict(),
         'reference_photo_path': reference_photo_path
@@ -359,13 +356,19 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         original_price = settings.STICKER_PACK_PRICE
         final_price = original_price
         
+        discount_text = ""
+        will_use_coupon = False
+        
         if discount['has_discount']:
             final_price = original_price * (100 - discount['discount_percent']) / 100
-            discount_text = f"\n\n🎉 *Скидка {discount['discount_percent']}% применена!*"
-        else:
-            discount_text = "\n\n🎁 *Приведи друга и получи скидку 50%!*"
+            discount_text = f"\n\n🎉 *Скидка {discount['discount_percent']}% применена!*\n"
+            discount_text += f"💳 Останется купонов: {discount['available_coupons'] - 1}"
+            will_use_coupon = True
         
-        # СРАЗУ создаем платеж
+        # Сохраняем флаг, что нужно использовать купон
+        await state.update_data(will_use_coupon=will_use_coupon)
+        
+        # Создаем платеж
         payment, payment_url, payment_id = create_yookassa_payment(
             amount_rub=int(final_price),
             description="Стикерпак",
@@ -378,10 +381,10 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
             payment_id=payment_id,
             user_id=user_id,
             chat_id=message.chat.id,
-            message_id=status_message.message_id  # Передаем ID сообщения для редактирования
+            message_id=status_message.message_id,
+            state=state  # Передаем state для использования купона
         ))
         
-        # ПОКАЗЫВАЕМ ОДИН ЭКРАН с кнопкой оплаты
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"💳 Оплатить {final_price:.0f} ₽", url=payment_url)],
             [InlineKeyboardButton(text="❌ Отменить генерацию", callback_data="cancel_generation")]
@@ -402,7 +405,6 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
     finally:
         await session.close()
 
-
 # ============= ДОБАВЬТЕ НОВЫЙ ОБРАБОТЧИК ДЛЯ ОТМЕНЫ =============
 @router.callback_query(lambda c: c.data == "cancel_purchase")
 async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
@@ -412,9 +414,8 @@ async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ============= ОБНОВИТЕ check_payment_background ДЛЯ РАБОТЫ С ОБОИМИ СЦЕНАРИЯМИ =============
 async def check_payment_background(payment_id: str, user_id: int, chat_id: int, message_id: int = None, state=None):
-    """Фоновая проверка статуса платежа (обновленная)"""
+    """Фоновая проверка статуса платежа (с использованием купона)"""
     from yookassa_payment import check_payment_status
     
     max_checks = 90
@@ -429,6 +430,21 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
             
             if payment_status['paid'] and payment_status['status'] == 'succeeded':
                 logger.info(f"Платеж {payment_id} успешно подтвержден для пользователя {user_id}")
+                
+                # ✅ ИСПОЛЬЗУЕМ КУПОН СКИДКИ, если он был применен
+                if state:
+                    data = await state.get_data()
+                    if data.get('will_use_coupon'):
+                        session = await get_session()
+                        try:
+                            db_service = DatabaseService(session)
+                            used = await db_service.use_discount_coupon(user_id)
+                            if used:
+                                logger.info(f"Купон скидки использован для пользователя {user_id}")
+                            else:
+                                logger.warning(f"Не удалось использовать купон для {user_id}")
+                        finally:
+                            await session.close()
                 
                 # Проверяем, есть ли данные для генерации
                 pending = pending_generations.get(user_id)
@@ -466,7 +482,7 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
                     finally:
                         await session.close()
                 
-                # Убираем кнопки из сообщения, если message_id передан
+                # Убираем кнопки из сообщения
                 if message_id:
                     try:
                         await bot.edit_message_reply_markup(
@@ -503,8 +519,7 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
             text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова с помощью /generate"
         )
     except:
-        pass
-        
+        pass        
 
 
 @router.message(Command("help"))
@@ -1708,6 +1723,13 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         user = await db_service.get_or_create_user(
             telegram_id=message.from_user.id
         )
+        
+        # ✅ ИСПОЛЬЗУЕМ КУПОН СКИДКИ, если он был применен
+        data = await state.get_data()
+        if data.get('will_use_coupon'):
+            used = await db_service.use_discount_coupon(user.id)
+            if used:
+                logger.info(f"Купон скидки использован для пользователя {user.id}")
         
         # Добавляем платную генерацию
         await db_service.add_paid_generations(user.id, 1)
