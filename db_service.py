@@ -104,270 +104,270 @@ class DatabaseService:
         )
         await self.session.commit()
     
-async def process_referral(self, referrer_code: str, referred_user_id: int) -> bool:
-    """Обработка реферального кода - создаем купон скидки для реферера"""
-    from database import User, DiscountCoupon
-    
-    result = await self.session.execute(
-        select(User).where(User.referral_code == referrer_code)
-    )
-    referrer = result.scalar_one_or_none()
-    
-    if not referrer or referrer.id == referred_user_id:
-        return False
-    
-    # Проверяем, не использовал ли уже этот пользователь реферальный код
-    result = await self.session.execute(
-        select(User).where(User.id == referred_user_id)
-    )
-    referred_user = result.scalar_one_or_none()
-    
-    if not referred_user:
-        return False
-    
-    if referred_user.referred_by is not None:
-        return False  # Уже использовал реферальный код
-    
-    # Назначаем реферера
-    referred_user.referred_by = referrer.id
-    
-    # ✅ СОЗДАЕМ КУПОН СКИДКИ ДЛЯ РЕФЕРЕРА (сразу, при переходе)
-    coupon = DiscountCoupon(
-        user_id=referrer.id,  # Владелец купона - реферер
-        source_user_id=referred_user_id,  # Источник - новый пользователь
-        used=False
-    )
-    self.session.add(coupon)
-    
-    # Создаем запись о награде
-    reward = ReferralReward(
-        referrer_id=referrer.id,
-        referred_id=referred_user_id,
-        reward_amount=1,
-        reward_type="generation"
-    )
-    self.session.add(reward)
-    
-    await self.session.commit()
-    return True
-    
-    async def get_user_stats(self, user_id: int) -> dict:
-        """Получить статистику пользователя"""
-        user_result = await self.session.execute(
-            select(User).where(User.id == user_id)
-        )
-        user = user_result.scalar_one_or_none()
+    async def process_referral(self, referrer_code: str, referred_user_id: int) -> bool:
+        """Обработка реферального кода - создаем купон скидки для реферера"""
+        from database import User, DiscountCoupon
         
-        if not user:
-            return {
-                "free_generations_left": 0,
-                "total_generations": 0,
-                "completed_generations": 0,
-                "referrals_count": 0,
-                "referral_code": "",
-                "is_premium": False,
-                "paid_generations_left": 0,
-                "available_discount_coupons": 0  # Добавляем
-            }
-        
-        generations_result = await self.session.execute(
-            select(func.count(Generation.id))
-            .where(Generation.user_id == user_id)
-        )
-        total_generations = generations_result.scalar() or 0
-        
-        completed_result = await self.session.execute(
-            select(func.count(Generation.id))
-            .where(
-                Generation.user_id == user_id,
-                Generation.status == "completed"
-            )
-        )
-        completed_generations = completed_result.scalar() or 0
-        
-        referrals_result = await self.session.execute(
-            select(func.count(User.id))
-            .where(User.referred_by == user_id)
-        )
-        referrals_count = referrals_result.scalar() or 0
-        
-        # Получаем количество доступных купонов
-        available_coupons = await self.get_available_coupons_count(user_id)
-        
-        return {
-            "free_generations_left": user.free_generations_left,
-            "total_generations": total_generations,
-            "completed_generations": completed_generations,
-            "referrals_count": referrals_count,
-            "referral_code": user.referral_code,
-            "is_premium": user.is_premium,
-            "paid_generations_left": user.paid_generations_left,
-            "available_discount_coupons": available_coupons  # Добавляем
-        }
-
-    async def get_user_discount(self, user_id: int) -> dict:
-        """
-        Возвращает информацию о скидке пользователя
-        Проверяет наличие неиспользованных купонов
-        """
-        from database import DiscountCoupon
-        
-        # Считаем количество неиспользованных купонов
         result = await self.session.execute(
-            select(func.count(DiscountCoupon.id))
-            .where(
-                DiscountCoupon.user_id == user_id,
-                DiscountCoupon.used == False
-            )
+            select(User).where(User.referral_code == referrer_code)
         )
-        available_coupons = result.scalar() or 0
+        referrer = result.scalar_one_or_none()
         
-        if available_coupons > 0:
-            return {
-                'has_discount': True,
-                'discount_percent': 50,
-                'available_coupons': available_coupons,  # Сколько купонов доступно
-                'reason': f'У вас {available_coupons} неиспользованных купонов на скидку 50%',
-                'original_price': settings.STICKER_PACK_PRICE,
-                'final_price': settings.STICKER_PACK_PRICE * 0.5
-            }
-        
-        return {
-            'has_discount': False,
-            'discount_percent': 0,
-            'available_coupons': 0
-        }
-    async def use_discount_coupon(self, user_id: int) -> bool:
-        """
-        Использовать один купон скидки при оплате
-        Возвращает True, если купон успешно использован
-        """
-        from database import DiscountCoupon
-        
-        # Находим один неиспользованный купон
-        result = await self.session.execute(
-            select(DiscountCoupon)
-            .where(
-                DiscountCoupon.user_id == user_id,
-                DiscountCoupon.used == False
-            )
-            .limit(1)
-        )
-        coupon = result.scalar_one_or_none()
-        
-        if not coupon:
+        if not referrer or referrer.id == referred_user_id:
             return False
-
-    async def get_available_coupons_count(self, user_id: int) -> int:
-        """Получить количество доступных купонов скидки"""
-        from database import DiscountCoupon
         
+        # Проверяем, не использовал ли уже этот пользователь реферальный код
         result = await self.session.execute(
-            select(func.count(DiscountCoupon.id))
-            .where(
-                DiscountCoupon.user_id == user_id,
-                DiscountCoupon.used == False
+            select(User).where(User.id == referred_user_id)
+        )
+        referred_user = result.scalar_one_or_none()
+        
+        if not referred_user:
+            return False
+        
+        if referred_user.referred_by is not None:
+            return False  # Уже использовал реферальный код
+        
+        # Назначаем реферера
+        referred_user.referred_by = referrer.id
+        
+        # ✅ СОЗДАЕМ КУПОН СКИДКИ ДЛЯ РЕФЕРЕРА (сразу, при переходе)
+        coupon = DiscountCoupon(
+            user_id=referrer.id,  # Владелец купона - реферер
+            source_user_id=referred_user_id,  # Источник - новый пользователь
+            used=False
+        )
+        self.session.add(coupon)
+        
+        # Создаем запись о награде
+        reward = ReferralReward(
+            referrer_id=referrer.id,
+            referred_id=referred_user_id,
+            reward_amount=1,
+            reward_type="generation"
+        )
+        self.session.add(reward)
+        
+        await self.session.commit()
+        return True
+        
+        async def get_user_stats(self, user_id: int) -> dict:
+            """Получить статистику пользователя"""
+            user_result = await self.session.execute(
+                select(User).where(User.id == user_id)
             )
-        )
-        return result.scalar() or 0
-        
-        # Отмечаем купон как использованный
-        coupon.used = True
-        coupon.used_at = func.now()
-        
-        await self.session.commit()
-        return True
-        
-    async def get_referrals_count(self, user_id: int) -> int:
-        """Возвращает количество рефералов пользователя"""
-        from database import User
-        
-        result = await self.session.execute(
-            select(func.count(User.id)).where(User.referred_by == user_id)
-        )
-        return result.scalar() or 0
-    
+            user = user_result.scalar_one_or_none()
+            
+            if not user:
+                return {
+                    "free_generations_left": 0,
+                    "total_generations": 0,
+                    "completed_generations": 0,
+                    "referrals_count": 0,
+                    "referral_code": "",
+                    "is_premium": False,
+                    "paid_generations_left": 0,
+                    "available_discount_coupons": 0  # Добавляем
+                }
+            
+            generations_result = await self.session.execute(
+                select(func.count(Generation.id))
+                .where(Generation.user_id == user_id)
+            )
+            total_generations = generations_result.scalar() or 0
+            
+            completed_result = await self.session.execute(
+                select(func.count(Generation.id))
+                .where(
+                    Generation.user_id == user_id,
+                    Generation.status == "completed"
+                )
+            )
+            completed_generations = completed_result.scalar() or 0
+            
+            referrals_result = await self.session.execute(
+                select(func.count(User.id))
+                .where(User.referred_by == user_id)
+            )
+            referrals_count = referrals_result.scalar() or 0
+            
+            # Получаем количество доступных купонов
+            available_coupons = await self.get_available_coupons_count(user_id)
+            
+            return {
+                "free_generations_left": user.free_generations_left,
+                "total_generations": total_generations,
+                "completed_generations": completed_generations,
+                "referrals_count": referrals_count,
+                "referral_code": user.referral_code,
+                "is_premium": user.is_premium,
+                "paid_generations_left": user.paid_generations_left,
+                "available_discount_coupons": available_coupons  # Добавляем
+            }
 
-    async def add_paid_generations(self, user_id: int, count: int) -> bool:
-        """Добавить платные генерации пользователю"""
-        from sqlalchemy import text
-        
-        query = text("""
-            UPDATE users 
-            SET paid_generations_left = paid_generations_left + :count
-            WHERE id = :user_id
-        """)
-        await self.session.execute(query, {"user_id": user_id, "count": count})
-        await self.session.commit()
-        return True
+        async def get_user_discount(self, user_id: int) -> dict:
+            """
+            Возвращает информацию о скидке пользователя
+            Проверяет наличие неиспользованных купонов
+            """
+            from database import DiscountCoupon
+            
+            # Считаем количество неиспользованных купонов
+            result = await self.session.execute(
+                select(func.count(DiscountCoupon.id))
+                .where(
+                    DiscountCoupon.user_id == user_id,
+                    DiscountCoupon.used == False
+                )
+            )
+            available_coupons = result.scalar() or 0
+            
+            if available_coupons > 0:
+                return {
+                    'has_discount': True,
+                    'discount_percent': 50,
+                    'available_coupons': available_coupons,  # Сколько купонов доступно
+                    'reason': f'У вас {available_coupons} неиспользованных купонов на скидку 50%',
+                    'original_price': settings.STICKER_PACK_PRICE,
+                    'final_price': settings.STICKER_PACK_PRICE * 0.5
+                }
+            
+            return {
+                'has_discount': False,
+                'discount_percent': 0,
+                'available_coupons': 0
+            }
+        async def use_discount_coupon(self, user_id: int) -> bool:
+            """
+            Использовать один купон скидки при оплате
+            Возвращает True, если купон успешно использован
+            """
+            from database import DiscountCoupon
+            
+            # Находим один неиспользованный купон
+            result = await self.session.execute(
+                select(DiscountCoupon)
+                .where(
+                    DiscountCoupon.user_id == user_id,
+                    DiscountCoupon.used == False
+                )
+                .limit(1)
+            )
+            coupon = result.scalar_one_or_none()
+            
+            if not coupon:
+                return False
 
-    async def use_paid_generation(self, user_id: int) -> bool:
-        """Использовать платную генерацию"""
-        from sqlalchemy import text
+        async def get_available_coupons_count(self, user_id: int) -> int:
+            """Получить количество доступных купонов скидки"""
+            from database import DiscountCoupon
+            
+            result = await self.session.execute(
+                select(func.count(DiscountCoupon.id))
+                .where(
+                    DiscountCoupon.user_id == user_id,
+                    DiscountCoupon.used == False
+                )
+            )
+            return result.scalar() or 0
+            
+            # Отмечаем купон как использованный
+            coupon.used = True
+            coupon.used_at = func.now()
+            
+            await self.session.commit()
+            return True
+            
+        async def get_referrals_count(self, user_id: int) -> int:
+            """Возвращает количество рефералов пользователя"""
+            from database import User
+            
+            result = await self.session.execute(
+                select(func.count(User.id)).where(User.referred_by == user_id)
+            )
+            return result.scalar() or 0
         
-        query = text("""
-            UPDATE users 
-            SET paid_generations_left = paid_generations_left - 1,
-                total_generations = total_generations + 1
-            WHERE id = :user_id AND paid_generations_left > 0
-            RETURNING id
-        """)
-        result = await self.session.execute(query, {"user_id": user_id})
-        await self.session.commit()
-        return result.rowcount > 0
 
-    # В файле db_service.py добавьте этот метод в класс DatabaseService
+        async def add_paid_generations(self, user_id: int, count: int) -> bool:
+            """Добавить платные генерации пользователю"""
+            from sqlalchemy import text
+            
+            query = text("""
+                UPDATE users 
+                SET paid_generations_left = paid_generations_left + :count
+                WHERE id = :user_id
+            """)
+            await self.session.execute(query, {"user_id": user_id, "count": count})
+            await self.session.commit()
+            return True
 
-    async def get_user_by_id(self, user_id: int):
-        """Получить пользователя по ID"""
-        from database import User
-        
-        result = await self.session.execute(
-            select(User).where(User.id == user_id)
-        )
-        return result.scalar_one_or_none()
+        async def use_paid_generation(self, user_id: int) -> bool:
+            """Использовать платную генерацию"""
+            from sqlalchemy import text
+            
+            query = text("""
+                UPDATE users 
+                SET paid_generations_left = paid_generations_left - 1,
+                    total_generations = total_generations + 1
+                WHERE id = :user_id AND paid_generations_left > 0
+                RETURNING id
+            """)
+            result = await self.session.execute(query, {"user_id": user_id})
+            await self.session.commit()
+            return result.rowcount > 0
 
-    # В db_service.py добавьте метод save_payment
+        # В файле db_service.py добавьте этот метод в класс DatabaseService
 
-    async def save_payment(
-        self, 
-        user_id: int, 
-        payment_id: str, 
-        amount: float, 
-        currency: str, 
-        generations_added: int,
-        status: str = "succeeded"
-    ) -> Payment:
-        """Сохранить информацию о платеже"""
-        from database import Payment
-        
-        payment = Payment(
-            user_id=user_id,
-            payment_id=payment_id,
-            amount=amount,
-            currency=currency,
-            provider="telegram",  # или "yookassa" в зависимости от провайдера
-            status=status,
-            extra_metadata=f'{{"generations_added": {generations_added}}}'
-        )
-        
-        self.session.add(payment)
-        await self.session.commit()
-        await self.session.refresh(payment)
-        
-        return payment
+        async def get_user_by_id(self, user_id: int):
+            """Получить пользователя по ID"""
+            from database import User
+            
+            result = await self.session.execute(
+                select(User).where(User.id == user_id)
+            )
+            return result.scalar_one_or_none()
 
-    # В db_service.py добавьте метод get_payment_history
+        # В db_service.py добавьте метод save_payment
 
-    async def get_payment_history(self, user_id: int, limit: int = 10) -> List[Payment]:
-        """Получить историю платежей пользователя"""
-        from database import Payment
-        from sqlalchemy import select, desc
-        
-        result = await self.session.execute(
-            select(Payment)
-            .where(Payment.user_id == user_id)
-            .order_by(desc(Payment.created_at))
-            .limit(limit)
-        )
-        return result.scalars().all()
+        async def save_payment(
+            self, 
+            user_id: int, 
+            payment_id: str, 
+            amount: float, 
+            currency: str, 
+            generations_added: int,
+            status: str = "succeeded"
+        ) -> Payment:
+            """Сохранить информацию о платеже"""
+            from database import Payment
+            
+            payment = Payment(
+                user_id=user_id,
+                payment_id=payment_id,
+                amount=amount,
+                currency=currency,
+                provider="telegram",  # или "yookassa" в зависимости от провайдера
+                status=status,
+                extra_metadata=f'{{"generations_added": {generations_added}}}'
+            )
+            
+            self.session.add(payment)
+            await self.session.commit()
+            await self.session.refresh(payment)
+            
+            return payment
+
+        # В db_service.py добавьте метод get_payment_history
+
+        async def get_payment_history(self, user_id: int, limit: int = 10) -> List[Payment]:
+            """Получить историю платежей пользователя"""
+            from database import Payment
+            from sqlalchemy import select, desc
+            
+            result = await self.session.execute(
+                select(Payment)
+                .where(Payment.user_id == user_id)
+                .order_by(desc(Payment.created_at))
+                .limit(limit)
+            )
+            return result.scalars().all()
