@@ -545,7 +545,7 @@ async def check_payment_background(payment_id: str):
                 return
                 
             elif payment_status['status'] == 'canceled':
-                # ... обработка отмены
+                logger.warning('paymen canceled add handling')
                 
         except Exception as e:
             logger.error(f"Ошибка проверки платежа {payment_id}: {e}")
