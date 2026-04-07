@@ -132,7 +132,7 @@ class StickerGrid:
             if sticker['description']:
                 display += f"\n**{i+1}.** {sticker['emoji']} *{sticker['description']}*"
             else:
-                display += f"\n**{i+1}.** {sticker['emoji']} *будет на общую тему*"
+                display += f"\n**{i+1}.** {sticker['emoji']}  *Без описания*"
             if sticker['caption']:
                 display += f"\n    💬 Надпись на стикере: {sticker['caption']}"
         
