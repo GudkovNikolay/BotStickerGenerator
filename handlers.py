@@ -236,7 +236,7 @@ async def cmd_stats(message: Message):
                 f"✅ Успешных: {stats['completed_generations']}\n"
                 f"👥 Рефералов: {stats['referrals_count']}\n"
                 f"🎫 Реферальная ссылка: `{referral_link}`"
-        
+            )
         await message.answer(stats_text, parse_mode="Markdown")
     finally:
         await session.close()
