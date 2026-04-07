@@ -302,11 +302,10 @@ class DatabaseService:
         """Добавить платные генерации пользователю"""
         from sqlalchemy import text
         
-        # Добавляем RETURNING чтобы проверить, что обновление прошло
+        # Для SQLite убираем updated_at или используем CURRENT_TIMESTAMP
         query = text("""
             UPDATE users 
-            SET paid_generations_left = paid_generations_left + :count,
-                updated_at = NOW()
+            SET paid_generations_left = paid_generations_left + :count
             WHERE id = :user_id
             RETURNING id, paid_generations_left
         """)
@@ -320,7 +319,7 @@ class DatabaseService:
         else:
             logger.error(f"❌ Пользователь {user_id} не найден при добавлении генераций")
             return False
-
+            
     async def get_user_by_telegram_id(self, telegram_id: int):
         """Получить пользователя по telegram_id"""
         from database import User
