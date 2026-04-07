@@ -258,6 +258,14 @@ class DatabaseService:
         if not coupon:
             return False
 
+            # Отмечаем купон как использованный
+        coupon.used = True
+        coupon.used_at = datetime.utcnow()
+        
+        await self.session.commit()
+        logger.info(f"✅ Купон {coupon.id} использован для пользователя {user_id}")
+        return True
+
     async def get_available_coupons_count(self, user_id: int) -> int:
         """Получить количество доступных купонов скидки"""
         from database import DiscountCoupon

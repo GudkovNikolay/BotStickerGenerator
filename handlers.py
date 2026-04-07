@@ -439,7 +439,7 @@ async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def check_payment_background(payment_id: str):
+async def check_payment_background(payment_id: str, user_id=None):
     """Фоновая проверка статуса платежа (с использованием купона)"""
     from yookassa_payment import check_payment_status
     
