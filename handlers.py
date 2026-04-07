@@ -481,16 +481,35 @@ async def check_payment_background(payment_id: str):
                         finally:
                             await session.close()
                     
-                    # Добавляем платную генерацию (ВСЕГДА)
+                    
                     session = await get_session()
-                    logger.info("MMMMMMMMMMMM")
+                    logger.info("🔄 Начинаем добавление платной генерации...")
                     try:
                         db_service = DatabaseService(session)
-                        user = await db_service.get_or_create_user(telegram_id=user_id)
-                        await db_service.add_paid_generations(user.id, 1)
-                        logger.info(f"✅ Добавлена платная генерация для пользователя {user_id}")
+                        
+                        # Используем правильный метод для поиска по telegram_id
+                        user = await db_service.get_user_by_telegram_id(user_id)
+                        
+                        if user:
+                            logger.info(f"🔍 Найден пользователь: id={user.id}, текущее значение paid_generations_left={user.paid_generations_left}")
+                            
+                            # Добавляем генерацию
+                            success = await db_service.add_paid_generations(user.id, 1)
+                            
+                            if success:
+                                logger.info(f"✅ Успешно добавлена платная генерация для пользователя {user_id}")
+                                
+                                # Проверяем результат после обновления
+                                user_after = await db_service.get_user_by_telegram_id(user_id)
+                                if user_after:
+                                    logger.info(f"📊 ПОСЛЕ обновления: paid_generations_left={user_after.paid_generations_left}")
+                            else:
+                                logger.error(f"❌ Не удалось добавить генерацию для пользователя {user_id}")
+                        else:
+                            logger.error(f"❌ Пользователь с telegram_id {user_id} не найден в БД!")
+                            
                     except Exception as e:
-                        logger.error(f"Ошибка добавления генерации: {e}")
+                        logger.error(f"Ошибка добавления генерации: {e}", exc_info=True)
                     finally:
                         await session.close()
                     

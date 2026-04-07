@@ -302,15 +302,39 @@ class DatabaseService:
         """Добавить платные генерации пользователю"""
         from sqlalchemy import text
         
+        # Добавляем RETURNING чтобы проверить, что обновление прошло
         query = text("""
             UPDATE users 
-            SET paid_generations_left = paid_generations_left + :count
+            SET paid_generations_left = paid_generations_left + :count,
+                updated_at = NOW()
             WHERE id = :user_id
+            RETURNING id, paid_generations_left
         """)
-        await self.session.execute(query, {"user_id": user_id, "count": count})
+        result = await self.session.execute(query, {"user_id": user_id, "count": count})
         await self.session.commit()
-        return True
+        
+        row = result.first()
+        if row:
+            logger.info(f"✅ Пользователю {user_id} добавлено {count} генераций. Теперь: {row[1]}")
+            return True
+        else:
+            logger.error(f"❌ Пользователь {user_id} не найден при добавлении генераций")
+            return False
 
+    async def get_user_by_telegram_id(self, telegram_id: int):
+        """Получить пользователя по telegram_id"""
+        from database import User
+        
+        result = await self.session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        if user:
+            logger.info(f"Найден пользователь с telegram_id {telegram_id}: id={user.id}, paid_generations_left={user.paid_generations_left}")
+        else:
+            logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
+        return user
+    
     async def use_paid_generation(self, user_id: int) -> bool:
         """Использовать платную генерацию"""
         from sqlalchemy import text
