@@ -218,15 +218,24 @@ async def cmd_stats(message: Message):
 
         referral_link = f"https://t.me/{bot_username}?start={stats['referral_code']}"
 
-        stats_text = (
-            f"📊 Твоя статистика:\n\n"
-            f"$ Оплачено генераций: {stats['paid_generations_left']}\n"
-            f"📦 Всего генераций: {stats['total_generations']}\n"
-            f"✅ Успешных: {stats['completed_generations']}\n"
-            f"👥 Рефералов: {stats['referrals_count']}\n"
-            f"🎫 Купонов на скидку 50%: {stats['available_discount_coupons']}\n"  # Добавляем
-            f"🎫 Реферальная ссылка: `{referral_link}`\n"
-        )
+        if stats['available_discount_coupons'] > 0:
+            stats_text = (
+                f"📊 Твоя статистика:\n\n"
+                f"$ Оплачено генераций: {stats['paid_generations_left']}\n"
+                f"📦 Всего генераций: {stats['total_generations']}\n"
+                f"✅ Успешных: {stats['completed_generations']}\n"
+                f"👥 Рефералов: {stats['referrals_count']}\n"
+                f"🎫 Реферальная ссылка: `{referral_link}`\n\n"
+                f"Доступна скидка на {stats['available_discount_coupons']} стикерпаков!"
+            )
+        else:
+            stats_text = (
+                f"📊 Твоя статистика:\n\n"
+                f"$ Оплачено генераций: {stats['paid_generations_left']}\n"
+                f"📦 Всего генераций: {stats['total_generations']}\n"
+                f"✅ Успешных: {stats['completed_generations']}\n"
+                f"👥 Рефералов: {stats['referrals_count']}\n"
+                f"🎫 Реферальная ссылка: `{referral_link}`"
         
         await message.answer(stats_text, parse_mode="Markdown")
     finally:
@@ -248,16 +257,26 @@ async def cmd_referral(message: Message):
         bot_info = await message.bot.get_me()
         bot_username = bot_info.username
         
-        referral_text = (
-            f"🎁 Реферальная система\n\n"
-            f"За каждого друга, который перейдет по твоей ссылке, ТЫ получаешь КУПОН на скидку 50%!\n"
-            f"Купон можно использовать при оплате стикерпака.\n"
-            f"Купоны накапливаются - чем больше друзей, тем больше скидок!\n\n"
-            f"Поделись ссылкой с друзьями:\n"
-            f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
-            f"👥 Твоих рефералов: {stats['referrals_count']}\n"
-            f"🎫 Доступна скидка на {stats['available_discount_coupons']} стикерпаков"
-        )
+        if stats['available_discount_coupons'] > 0:
+            referral_text = (
+                f"🎁 Реферальная система\n\n"
+                f"За каждого друга, который перейдет по твоей ссылке, ТЫ получаешь КУПОН на скидку 50%!\n"
+                f"Купон можно использовать при оплате стикерпака.\n"
+                f"Купоны накапливаются - чем больше друзей, тем больше скидок!\n\n"
+                f"Поделись ссылкой с друзьями:\n"
+                f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
+                f"👥 Твоих рефералов: {stats['referrals_count']}\n"
+                f"🎫 Доступна скидка на {stats['available_discount_coupons']} стикерпаков"
+            )
+        else:
+            referral_text = (
+                f"🎁 Реферальная система\n\n"
+                f"За каждого друга, который перейдет по твоей ссылке, ТЫ получаешь КУПОН на скидку 50%!\n"
+                f"Купон можно использовать при оплате стикерпака.\n"
+                f"Купоны накапливаются - чем больше друзей, тем больше скидок!\n\n"
+                f"Поделись ссылкой с друзьями:\n"
+                f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
+                f"👥 Твоих рефералов: {stats['referrals_count']}\n"
         
         await message.answer(referral_text, parse_mode="Markdown")
     finally:
