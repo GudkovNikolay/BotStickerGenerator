@@ -226,7 +226,7 @@ async def cmd_stats(message: Message):
                 f"✅ Успешных: {stats['completed_generations']}\n"
                 f"👥 Рефералов: {stats['referrals_count']}\n"
                 f"🎫 Реферальная ссылка: `{referral_link}`\n\n"
-                f"Доступна скидка на {stats['available_discount_coupons']} стикерпаков!"
+                f"Доступна стикерпаков со скидкой: {stats['available_discount_coupons']} !"
             )
         else:
             stats_text = (
@@ -535,7 +535,7 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
     try:
         await bot.send_message(
             chat_id=chat_id,
-            text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова с помощью /generate"
+            text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова с помощью /buy"
         )
     except:
         pass        
