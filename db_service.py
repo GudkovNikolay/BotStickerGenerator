@@ -335,7 +335,12 @@ class DatabaseService:
         result = await self.session.execute(
             select(User).where(User.id == user_id)
         )
-        return result.scalar_one_or_none()
+        user = result.scalar_one_or_none()
+        if user:
+            logger.info(f"Найден пользователь {user_id}: paid_generations_left={user.paid_generations_left}")
+        else:
+            logger.warning(f"Пользователь {user_id} не найден")
+        return user
 
     # В db_service.py добавьте метод save_payment
 

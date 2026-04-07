@@ -483,6 +483,7 @@ async def check_payment_background(payment_id: str):
                     
                     # Добавляем платную генерацию (ВСЕГДА)
                     session = await get_session()
+                    logger.info("MMMMMMMMMMMM")
                     try:
                         db_service = DatabaseService(session)
                         user = await db_service.get_or_create_user(telegram_id=user_id)
@@ -572,7 +573,7 @@ async def check_payment_background(payment_id: str):
         except:
             pass
         del pending_payments[payment_id]
-        
+
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Справка по командам"""
