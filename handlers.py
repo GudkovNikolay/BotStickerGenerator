@@ -286,7 +286,6 @@ async def cmd_referral(message: Message):
     finally:
         await session.close()
 
-# ============= ЗАМЕНИТЕ ФУНКЦИЮ cmd_buy =============
 @router.message(Command("buy"))
 async def cmd_buy(message: Message, state: FSMContext):
     """Покупка генераций - сразу переходим к оплате"""
@@ -303,11 +302,14 @@ async def cmd_buy(message: Message, state: FSMContext):
         
         original_price = settings.STICKER_PACK_PRICE
         final_price = original_price
+        will_use_coupon = False
         
         if discount['has_discount']:
             final_price = original_price * (100 - discount['discount_percent']) / 100
+            will_use_coupon = True
         
-        # Сразу создаем платеж
+        # Создаем платеж
+        from yookassa_payment import create_yookassa_payment
         payment, payment_url, payment_id = create_yookassa_payment(
             amount_rub=int(final_price),
             description="Покупка генерации стикерпака",
@@ -315,17 +317,18 @@ async def cmd_buy(message: Message, state: FSMContext):
             user_id=user.id
         )
         
-        await state.update_data(pending_payment_id=payment_id)
+        # ✅ СОХРАНЯЕМ ИНФОРМАЦИЮ О ПЛАТЕЖЕ
+        pending_payments[payment_id] = {
+            'user_id': user.id,
+            'will_use_coupon': will_use_coupon,
+            'chat_id': message.chat.id,
+            'message_id': None  # Будет обновлено после отправки сообщения
+        }
         
-        # Запускаем фоновую проверку
-        asyncio.create_task(check_payment_background(
-            payment_id=payment_id,
-            user_id=message.from_user.id,
-            chat_id=message.chat.id,
-            message_id=None  # Будет обновлено после отправки сообщения
-        ))
+        # Запускаем фоновую проверку (без лишних аргументов)
+        asyncio.create_task(check_payment_background(payment_id))
         
-        # Показываем КНОПКУ ОПЛАТЫ СРАЗУ (один экран)
+        # Показываем кнопку оплаты
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"💳 Оплатить {final_price:.0f} ₽", url=payment_url)],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_purchase")]
@@ -344,16 +347,15 @@ async def cmd_buy(message: Message, state: FSMContext):
             parse_mode="Markdown"
         )
         
-        # Обновляем message_id для фоновой проверки (чтобы убрать кнопки после оплаты)
-        # Для этого нужно сохранить или передать message_id в check_payment_background
-        # Но в текущей реализации check_payment_background использует message_id для редактирования
+        # Обновляем message_id
+        if payment_id in pending_payments:
+            pending_payments[payment_id]['message_id'] = sent_msg.message_id
         
     except Exception as e:
         logger.error(f"Ошибка создания платежа: {e}")
         await message.answer(f"❌ Ошибка: {str(e)}")
     finally:
         await session.close()
-
 
 async def show_payment_screen(message: Message, state: FSMContext, grid: StickerGrid, status_message: Message, reference_photo_path: str = None):
     """Показывает экран оплаты - использует купон скидки"""
@@ -439,11 +441,11 @@ async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def check_payment_background(payment_id: str, user_id=None):
+async def check_payment_background(payment_id: str):
     """Фоновая проверка статуса платежа (с использованием купона)"""
     from yookassa_payment import check_payment_status
     
-    max_checks = 90  # 90 * 2 секунды = 3 минуты
+    max_checks = 90
     check_interval = 2
     bot = Bot(token=settings.BOT_TOKEN)
     
@@ -456,7 +458,6 @@ async def check_payment_background(payment_id: str, user_id=None):
             if payment_status['paid'] and payment_status['status'] == 'succeeded':
                 logger.info(f"Платеж {payment_id} успешно подтвержден")
                 
-                # ✅ ПОЛУЧАЕМ ИНФОРМАЦИЮ ИЗ ГЛОБАЛЬНОГО СЛОВАРЯ
                 payment_info = pending_payments.get(payment_id)
                 
                 if payment_info:
@@ -465,25 +466,34 @@ async def check_payment_background(payment_id: str, user_id=None):
                     chat_id = payment_info['chat_id']
                     message_id = payment_info.get('message_id')
                     
-                    # ✅ ИСПОЛЬЗУЕМ КУПОН СКИДКИ, если нужно
+                    # Используем купон скидки
                     if will_use_coupon:
                         session = await get_session()
                         try:
                             db_service = DatabaseService(session)
                             used = await db_service.use_discount_coupon(user_id)
                             if used:
-                                logger.info(f"✅ Купон скидки использован для пользователя {user_id} при платеже {payment_id}")
+                                logger.info(f"✅ Купон скидки использован для пользователя {user_id}")
                             else:
-                                logger.warning(f"❌ Не удалось использовать купон для {user_id} при платеже {payment_id}")
+                                logger.warning(f"❌ Не удалось использовать купон")
                         except Exception as e:
                             logger.error(f"Ошибка при использовании купона: {e}")
                         finally:
                             await session.close()
                     
-                    # Удаляем информацию о платеже из словаря
-                    del pending_payments[payment_id]
+                    # Добавляем платную генерацию (ВСЕГДА)
+                    session = await get_session()
+                    try:
+                        db_service = DatabaseService(session)
+                        user = await db_service.get_or_create_user(telegram_id=user_id)
+                        await db_service.add_paid_generations(user.id, 1)
+                        logger.info(f"✅ Добавлена платная генерация для пользователя {user_id}")
+                    except Exception as e:
+                        logger.error(f"Ошибка добавления генерации: {e}")
+                    finally:
+                        await session.close()
                     
-                    # Проверяем, есть ли данные для генерации
+                    # Проверяем, есть ли данные для генерации из /generate
                     pending = pending_generations.get(user_id)
                     
                     if pending:
@@ -505,21 +515,13 @@ async def check_payment_background(payment_id: str, user_id=None):
                             bot=bot
                         )
                     else:
-                        # Сценарий: оплата после /buy (просто добавляем генерации)
-                        session = await get_session()
-                        try:
-                            db_service = DatabaseService(session)
-                            user = await db_service.get_or_create_user(telegram_id=user_id)
-                            await db_service.add_paid_generations(user.id, 1)
-                            
-                            await bot.send_message(
-                                chat_id=chat_id,
-                                text="✅ Оплата подтверждена!\n\nДобавлена 1 платная генерация.\nИспользуйте /generate для создания стикерпака!"
-                            )
-                        finally:
-                            await session.close()
+                        # Сценарий: оплата после /buy
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text="✅ Оплата подтверждена!\n\nДобавлена 1 платная генерация.\nИспользуйте /generate для создания стикерпака!"
+                        )
                     
-                    # Убираем кнопки из сообщения, если message_id передан
+                    # Убираем кнопки
                     if message_id:
                         try:
                             await bot.edit_message_reply_markup(
@@ -530,15 +532,14 @@ async def check_payment_background(payment_id: str, user_id=None):
                         except Exception as e:
                             logger.error(f"Ошибка при удалении кнопок: {e}")
                     
-                else:
-                    logger.warning(f"Не найдена информация о платеже {payment_id}")
-                
+                    # Удаляем информацию о платеже
+                    del pending_payments[payment_id]
+                    
                 return
                 
             elif payment_status['status'] == 'canceled':
                 logger.info(f"Платеж {payment_id} отменен")
                 
-                # Удаляем информацию о платеже
                 if payment_id in pending_payments:
                     payment_info = pending_payments[payment_id]
                     if payment_info.get('message_id'):
@@ -566,12 +567,12 @@ async def check_payment_background(payment_id: str, user_id=None):
             bot = Bot(token=settings.BOT_TOKEN)
             await bot.send_message(
                 chat_id=payment_info['chat_id'],
-                text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова с помощью /generate"
+                text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова."
             )
         except:
             pass
         del pending_payments[payment_id]
-
+        
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Справка по командам"""

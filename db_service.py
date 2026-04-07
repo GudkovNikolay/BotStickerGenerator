@@ -243,6 +243,7 @@ class DatabaseService:
         Возвращает True, если купон успешно использован
         """
         from database import DiscountCoupon
+        from datetime import datetime
         
         # Находим один неиспользованный купон
         result = await self.session.execute(
@@ -256,9 +257,10 @@ class DatabaseService:
         coupon = result.scalar_one_or_none()
         
         if not coupon:
+            logger.warning(f"Не найден неиспользованный купон для пользователя {user_id}")
             return False
-
-            # Отмечаем купон как использованный
+        
+        # Отмечаем купон как использованный
         coupon.used = True
         coupon.used_at = datetime.utcnow()
         
