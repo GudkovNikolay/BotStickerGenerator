@@ -277,7 +277,7 @@ async def cmd_referral(message: Message):
                 f"Поделись ссылкой с друзьями:\n"
                 f"`https://t.me/{bot_username}?start={stats['referral_code']}`\n\n"
                 f"👥 Твоих рефералов: {stats['referrals_count']}\n"
-        
+            )
         await message.answer(referral_text, parse_mode="Markdown")
     finally:
         await session.close()
