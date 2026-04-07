@@ -36,6 +36,10 @@ router = Router()
 
 pending_generations = {}
 
+# Глобальный словарь для хранения информации о купонах при оплате
+# Ключ: payment_id, Значение: {'user_id': int, 'will_use_coupon': bool}
+pending_payments = {}
+
 # Состояния FSM
 class GenerationStates(StatesGroup):
     waiting_for_prompt = State()
@@ -374,8 +378,6 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
         
         original_price = settings.STICKER_PACK_PRICE
         final_price = original_price
-        
-        discount_text = ""
         will_use_coupon = False
         
         if discount['has_discount']:
@@ -383,11 +385,11 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
             discount_text = f"\n\n🎉 *Скидка {discount['discount_percent']}% применена!*\n"
             discount_text += f"💳 Останется купонов: {discount['available_coupons'] - 1}"
             will_use_coupon = True
-        
-        # Сохраняем флаг, что нужно использовать купон
-        await state.update_data(will_use_coupon=will_use_coupon)
+        else:
+            discount_text = ""
         
         # Создаем платеж
+        from yookassa_payment import create_yookassa_payment
         payment, payment_url, payment_id = create_yookassa_payment(
             amount_rub=int(final_price),
             description="Стикерпак",
@@ -395,14 +397,18 @@ async def show_payment_screen(message: Message, state: FSMContext, grid: Sticker
             user_id=user.id
         )
         
+        # ✅ СОХРАНЯЕМ ИНФОРМАЦИЮ О КУПОНЕ В ГЛОБАЛЬНЫЙ СЛОВАРЬ
+        pending_payments[payment_id] = {
+            'user_id': user.id,
+            'will_use_coupon': will_use_coupon,
+            'chat_id': message.chat.id,
+            'message_id': status_message.message_id
+        }
+        
+        logger.info(f"Создан платеж {payment_id}, will_use_coupon={will_use_coupon}")
+        
         # Запускаем фоновую проверку
-        asyncio.create_task(check_payment_background(
-            payment_id=payment_id,
-            user_id=user_id,
-            chat_id=message.chat.id,
-            message_id=status_message.message_id,
-            state=state  # Передаем state для использования купона
-        ))
+        asyncio.create_task(check_payment_background(payment_id))
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"💳 Оплатить {final_price:.0f} ₽", url=payment_url)],
@@ -433,11 +439,11 @@ async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def check_payment_background(payment_id: str, user_id: int, chat_id: int, message_id: int = None, state=None):
+async def check_payment_background(payment_id: str):
     """Фоновая проверка статуса платежа (с использованием купона)"""
     from yookassa_payment import check_payment_status
     
-    max_checks = 90
+    max_checks = 90  # 90 * 2 секунды = 3 минуты
     check_interval = 2
     bot = Bot(token=settings.BOT_TOKEN)
     
@@ -448,83 +454,104 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
             payment_status = check_payment_status(payment_id)
             
             if payment_status['paid'] and payment_status['status'] == 'succeeded':
-                logger.info(f"Платеж {payment_id} успешно подтвержден для пользователя {user_id}")
+                logger.info(f"Платеж {payment_id} успешно подтвержден")
                 
-                # ✅ ИСПОЛЬЗУЕМ КУПОН СКИДКИ, если он был применен
-                if state:
-                    data = await state.get_data()
-                    if data.get('will_use_coupon'):
+                # ✅ ПОЛУЧАЕМ ИНФОРМАЦИЮ ИЗ ГЛОБАЛЬНОГО СЛОВАРЯ
+                payment_info = pending_payments.get(payment_id)
+                
+                if payment_info:
+                    user_id = payment_info['user_id']
+                    will_use_coupon = payment_info['will_use_coupon']
+                    chat_id = payment_info['chat_id']
+                    message_id = payment_info.get('message_id')
+                    
+                    # ✅ ИСПОЛЬЗУЕМ КУПОН СКИДКИ, если нужно
+                    if will_use_coupon:
                         session = await get_session()
                         try:
                             db_service = DatabaseService(session)
                             used = await db_service.use_discount_coupon(user_id)
                             if used:
-                                logger.info(f"Купон скидки использован для пользователя {user_id}")
+                                logger.info(f"✅ Купон скидки использован для пользователя {user_id} при платеже {payment_id}")
                             else:
-                                logger.warning(f"Не удалось использовать купон для {user_id}")
+                                logger.warning(f"❌ Не удалось использовать купон для {user_id} при платеже {payment_id}")
+                        except Exception as e:
+                            logger.error(f"Ошибка при использовании купона: {e}")
                         finally:
                             await session.close()
-                
-                # Проверяем, есть ли данные для генерации
-                pending = pending_generations.get(user_id)
-                
-                if pending:
-                    # Сценарий: оплата после /generate
-                    grid = StickerGrid.from_dict(pending['grid'])
-                    reference_photo_path = pending['reference_photo_path']
-                    del pending_generations[user_id]
                     
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text="✅ Оплата подтверждена!\n\n🎨 Начинаю генерацию вашего стикерпака..."
-                    )
+                    # Удаляем информацию о платеже из словаря
+                    del pending_payments[payment_id]
                     
-                    await start_generation_direct(
-                        chat_id=chat_id,
-                        user_id=user_id,
-                        grid=grid,
-                        reference_photo_path=reference_photo_path,
-                        bot=bot
-                    )
-                else:
-                    # Сценарий: оплата после /buy (просто добавляем генерации)
-                    session = await get_session()
-                    try:
-                        db_service = DatabaseService(session)
-                        user = await db_service.get_or_create_user(telegram_id=user_id)
-                        await db_service.add_paid_generations(user.id, 1)
+                    # Проверяем, есть ли данные для генерации
+                    pending = pending_generations.get(user_id)
+                    
+                    if pending:
+                        # Сценарий: оплата после /generate
+                        grid = StickerGrid.from_dict(pending['grid'])
+                        reference_photo_path = pending['reference_photo_path']
+                        del pending_generations[user_id]
                         
                         await bot.send_message(
                             chat_id=chat_id,
-                            text="✅ Оплата подтверждена!\n\nДобавлена 1 платная генерация.\nИспользуйте /generate для создания стикерпака!"
+                            text="✅ Оплата подтверждена!\n\n🎨 Начинаю генерацию вашего стикерпака..."
                         )
-                    finally:
-                        await session.close()
-                
-                # Убираем кнопки из сообщения
-                if message_id:
-                    try:
-                        await bot.edit_message_reply_markup(
+                        
+                        await start_generation_direct(
                             chat_id=chat_id,
-                            message_id=message_id,
-                            reply_markup=None
+                            user_id=user_id,
+                            grid=grid,
+                            reference_photo_path=reference_photo_path,
+                            bot=bot
                         )
-                    except:
-                        pass
+                    else:
+                        # Сценарий: оплата после /buy (просто добавляем генерации)
+                        session = await get_session()
+                        try:
+                            db_service = DatabaseService(session)
+                            user = await db_service.get_or_create_user(telegram_id=user_id)
+                            await db_service.add_paid_generations(user.id, 1)
+                            
+                            await bot.send_message(
+                                chat_id=chat_id,
+                                text="✅ Оплата подтверждена!\n\nДобавлена 1 платная генерация.\nИспользуйте /generate для создания стикерпака!"
+                            )
+                        finally:
+                            await session.close()
+                    
+                    # Убираем кнопки из сообщения, если message_id передан
+                    if message_id:
+                        try:
+                            await bot.edit_message_reply_markup(
+                                chat_id=chat_id,
+                                message_id=message_id,
+                                reply_markup=None
+                            )
+                        except Exception as e:
+                            logger.error(f"Ошибка при удалении кнопок: {e}")
+                    
+                else:
+                    logger.warning(f"Не найдена информация о платеже {payment_id}")
                 
                 return
                 
             elif payment_status['status'] == 'canceled':
                 logger.info(f"Платеж {payment_id} отменен")
-                if message_id:
-                    try:
-                        await bot.edit_message_text(
-                            "❌ Платеж отменен",
-                            chat_id=chat_id,
-                            message_id=message_id
-                        )
-                    except:
-                        pass
+                
+                # Удаляем информацию о платеже
+                if payment_id in pending_payments:
+                    payment_info = pending_payments[payment_id]
+                    if payment_info.get('message_id'):
+                        try:
+                            bot = Bot(token=settings.BOT_TOKEN)
+                            await bot.edit_message_text(
+                                "❌ Платеж отменен",
+                                chat_id=payment_info['chat_id'],
+                                message_id=payment_info['message_id']
+                            )
+                        except:
+                            pass
+                    del pending_payments[payment_id]
                 return
                 
         except Exception as e:
@@ -532,14 +559,18 @@ async def check_payment_background(payment_id: str, user_id: int, chat_id: int, 
     
     # Время вышло
     logger.warning(f"Время ожидания оплаты {payment_id} истекло")
-    try:
-        await bot.send_message(
-            chat_id=chat_id,
-            text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова с помощью /buy"
-        )
-    except:
-        pass        
-
+    
+    if payment_id in pending_payments:
+        payment_info = pending_payments[payment_id]
+        try:
+            bot = Bot(token=settings.BOT_TOKEN)
+            await bot.send_message(
+                chat_id=payment_info['chat_id'],
+                text="⏰ Время ожидания оплаты истекло. Пожалуйста, попробуйте снова с помощью /generate"
+            )
+        except:
+            pass
+        del pending_payments[payment_id]
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
@@ -1408,6 +1439,15 @@ async def cancel_generation(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     if user_id in pending_generations:
         del pending_generations[user_id]
+    
+    # Также очищаем ожидающие платежи для этого пользователя
+    to_delete = []
+    for payment_id, info in pending_payments.items():
+        if info.get('user_id') == user_id:
+            to_delete.append(payment_id)
+    for payment_id in to_delete:
+        del pending_payments[payment_id]
+    
     await state.clear()
     await callback.message.edit_text("❌ Генерация отменена")
     await callback.answer()
