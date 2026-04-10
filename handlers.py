@@ -804,7 +804,7 @@ async def grid_reference_photo(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_text(
             "📷 Отправь референсное фото (желательно с лицом/персонажем).\n\n"
-            "Тогда все стикеры будутс этим персонажем.\n\n"
+            "Тогда все стикеры будут с этим персонажем.\n\n"
             "Можно отменить: нажми «◀️ Назад ко всем стикерам».",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад ко всем стикерам", callback_data="grid_reference_back")]]
