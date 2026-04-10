@@ -219,7 +219,7 @@ class ImageGenerator:
     def _draw_grid_debug(
         self, 
         grid_bytes: bytes, 
-        grid_rows: int, 2
+        grid_rows: int, 
         grid_cols: int,
         output_path: Path,
         remove_border: bool = True
