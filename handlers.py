@@ -1229,8 +1229,6 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
                 )
                 return
             
-            # Есть платные генерации - используем одну
-            await db_service.use_paid_generation(user.id)
         
         # Продолжаем генерацию
         await status_message.edit_text(
@@ -1285,6 +1283,9 @@ async def grid_generate(callback: CallbackQuery, state: FSMContext):
             f"✅ **Стикерпак успешно создан!**\n\n"
             f"Все стикеры сгенерированы с вашими описаниями."
         )
+
+        # Есть платные генерации - используем одну
+        await db_service.use_paid_generation(user.id)
         
     except Exception as e:
         logger.error(f"Ошибка генерации: {e}")
