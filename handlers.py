@@ -490,7 +490,7 @@ async def check_payment_background(payment_id: str):
                             success = await db_service.add_paid_generations(user.id, 1)
                             
                             if success:
-                                logger.info(f"✅ Добавлена платная генерация для пользователя {telegram_id}")
+                                logger.info(f"✅ Добавлена генерация для пользователя {telegram_id}")
 
                                 # Сохраняем платеж в БД
                                 try:
@@ -549,7 +549,7 @@ async def check_payment_background(payment_id: str):
                     else:
                         await bot.send_message(
                             chat_id=chat_id,
-                            text="✅ Оплата подтверждена!\n\nДобавлена 1 платная генерация.\nИспользуйте /generate для создания стикерпака!"
+                            text="✅ Оплата подтверждена!\n\nДобавлена 1 генерация.\nИспользуйте /generate для создания стикерпака!"
                         )
                     
                     if message_id:
@@ -709,7 +709,7 @@ async def cmd_history(message: Message):
         
         text = "📊 История платежей:\n\n"
         for p in payments:
-            text += f"• {p.created_at.strftime('%d.%m.%Y')}: {p.generations_added} ген. - {p.amount/100} {p.currency}\n"
+            text += f"• {p.created_at.strftime('%d.%m.%Y')}: {1} ген. - {p.amount/100} {p.currency}\n"
         
         await message.answer(text)
     finally:
@@ -1834,7 +1834,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         else:
             await message.answer(
                 f"✅ Оплата прошла успешно!\n\n"
-                f"Добавлена 1 платная генерация.\n"
+                f"Добавлена 1 генерация.\n"
                 f"Используйте /generate для создания стикерпака!"
             )
         
