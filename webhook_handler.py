@@ -38,7 +38,8 @@ async def yookassa_webhook(request):
                             payment_id=payment_id,
                             amount=int(float(payment_info.amount.value) * 100),  # в копейки
                             currency="RUB",
-                            generations_added=1
+                            generations_added=1,
+                            provider="yookassa",
                         )
                         
                         logger.info(f"Payment {payment_id} processed for user {telegram_id}")

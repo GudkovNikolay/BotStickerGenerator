@@ -317,7 +317,7 @@ class DatabaseService:
         logger.info(f"✅ Пользователю {user_id} добавлено {count} генераций")
         return True
             
-    async def get_user_by_telegram_id(self, telegram_id: int, refresh: bool = False):
+    async def get_user_by_telegram_id(self, telegram_id: int):
         """Получить пользователя по telegram_id"""
         from database import User
         
@@ -325,10 +325,6 @@ class DatabaseService:
             select(User).where(User.telegram_id == telegram_id)
         )
         user = result.scalar_one_or_none()
-        
-        if user and refresh:
-            await self.session.refresh(user)
-        
         if user:
             logger.info(f"Найден пользователь с telegram_id {telegram_id}: id={user.id}, paid_generations_left={user.paid_generations_left}")
         else:
@@ -375,6 +371,7 @@ class DatabaseService:
         amount: float, 
         currency: str, 
         generations_added: int,
+        provider: str = "yookassa",
         status: str = "succeeded"
     ) -> Payment:
         """Сохранить информацию о платеже"""
@@ -385,7 +382,7 @@ class DatabaseService:
             payment_id=payment_id,
             amount=amount,
             currency=currency,
-            provider="telegram",  # или "yookassa" в зависимости от провайдера
+            provider=provider,
             status=status,
             extra_metadata=f'{{"generations_added": {generations_added}}}'
         )

@@ -491,6 +491,28 @@ async def check_payment_background(payment_id: str):
                             
                             if success:
                                 logger.info(f"✅ Добавлена платная генерация для пользователя {telegram_id}")
+
+                                # Сохраняем платеж в БД
+                                try:
+                                    amount_raw = payment_status.get("amount")
+                                    amount_val = float(amount_raw) if amount_raw is not None else 0.0
+                                except Exception:
+                                    amount_val = 0.0
+
+                                try:
+                                    await db_service.save_payment(
+                                        user_id=user.id,
+                                        payment_id=payment_id,
+                                        amount=amount_val,
+                                        currency="RUB",
+                                        generations_added=1,
+                                        provider="yookassa",
+                                        status="succeeded",
+                                    )
+                                    logger.info(f"💾 Платеж {payment_id} сохранен в БД для user_id={user.id}")
+                                except Exception as e:
+                                    # Возможна гонка: вебхук мог уже сохранить payment_id (unique).
+                                    logger.warning(f"Не удалось сохранить платеж {payment_id}: {e}")
                                 
                                 # Проверяем
                                 user_after = await db_service.get_user_by_telegram_id(telegram_id)
@@ -1783,7 +1805,8 @@ async def successful_payment_handler(message: Message, state: FSMContext):
             payment_id=payment_info.provider_payment_charge_id or payment_info.telegram_payment_charge_id,
             amount=payment_info.total_amount,
             currency=payment_info.currency,
-            generations_added=1
+            generations_added=1,
+            provider="telegram",
         )
         
         # Проверяем, есть ли ожидающая генерация
