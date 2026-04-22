@@ -1318,8 +1318,6 @@ async def start_generation_direct(chat_id: int, user_id: int, grid: StickerGrid,
             await bot.send_message(chat_id, f"❌ Пользователь не найден")
             return
         
-        # Используем платную генерацию
-        await db_service.use_paid_generation(user.id)
                 
         # Отправляем статус
         status_msg = await bot.send_message(
@@ -1375,6 +1373,8 @@ async def start_generation_direct(chat_id: int, user_id: int, grid: StickerGrid,
             chat_id=chat_id,
             message_id=status_msg.message_id
         )
+        # Используем платную генерацию
+        await db_service.use_paid_generation(user.id)
         
     except Exception as e:
         logger.error(f"Ошибка генерации: {e}")
