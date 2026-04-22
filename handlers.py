@@ -709,7 +709,7 @@ async def cmd_history(message: Message):
         
         text = "📊 История платежей:\n\n"
         for p in payments:
-            text += f"• {p.created_at.strftime('%d.%m.%Y')}: {1} ген. - {p.amount/100} {p.currency}\n"
+            text += f"• {p.created_at.strftime('%d.%m.%Y')}: {1} пак - {p.amount} {p.currency}\n"
         
         await message.answer(text)
     finally:
