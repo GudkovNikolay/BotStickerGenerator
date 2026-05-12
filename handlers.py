@@ -165,6 +165,20 @@ async def cmd_start(message: Message, state: FSMContext):
         
         stats = await db_service.get_user_stats(user.id)
         
+                # Создаем медиа группу с фото
+        media_group = [
+            InputMediaPhoto(
+                media=FSInputFile("UI_photos/instr1.jpg"),
+                caption="📖 **Инструкция по использованию:**\nОтправь мне текстовое описание стикера, которое начинается с команды /generate",
+                parse_mode="Markdown"
+            ),
+            InputMediaPhoto(
+                media=FSInputFile("UI_photos/example_1.jpg"),
+                caption="🎨 **Пример генерации:**\n/generate Кот в космическом скафандре, стиль аниме"
+            )
+        ]
+        await bot.send_media_group(message.chat.id, media_group)
+        
         # Получаем username бота
         bot_info = await message.bot.get_me()
         bot_username = bot_info.username
