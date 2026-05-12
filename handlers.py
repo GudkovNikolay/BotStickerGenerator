@@ -199,15 +199,9 @@ async def cmd_start(message: Message, state: FSMContext):
                     return p
             return None
 
-        instr1_path = _first_existing_path(
-            project_root / "UI_photos" / "instr1.jpg",
-            project_root / "v2_bot" / "UI_PHOTOS" / "instr_1.jpeg",
-        )
-        example1_path = _first_existing_path(
-            project_root / "UI_photos" / "example_1.jpg",
-            project_root / "v2_bot" / "UI_PHOTOS" / "example_1.jpg",
-        )
-
+        instr1_path = "UI_PHOTOS/instr_1.jpeg"
+        example1_path = "UI_PHOTOS/example_1.jpg"
+        
         if instr1_path and example1_path:
             await message.answer_media_group([
                 InputMediaPhoto(media=FSInputFile(str(instr1_path))),
