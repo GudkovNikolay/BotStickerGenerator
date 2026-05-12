@@ -164,20 +164,6 @@ async def cmd_start(message: Message, state: FSMContext):
             await db_service.process_referral(referral_code, user.id)
         
         stats = await db_service.get_user_stats(user.id)
-        
-                # Создаем медиа группу с фото
-        media_group = [
-            InputMediaPhoto(
-                media=FSInputFile("UI_photos/instr1.jpg"),
-                caption="📖 **Инструкция по использованию:**\nОтправь мне текстовое описание стикера, которое начинается с команды /generate",
-                parse_mode="Markdown"
-            ),
-            InputMediaPhoto(
-                media=FSInputFile("UI_photos/example_1.jpg"),
-                caption="🎨 **Пример генерации:**\n/generate Кот в космическом скафандре, стиль аниме"
-            )
-        ]
-        await bot.send_media_group(message.chat.id, media_group)
 
         # Получаем username бота
         bot_info = await message.bot.get_me()
@@ -204,6 +190,36 @@ async def cmd_start(message: Message, state: FSMContext):
             )],
         ])
         
+        # Отправляем изображения-инструкции (альбомом), затем текст с клавиатурой.
+        project_root = Path(__file__).resolve().parent.parent
+
+        def _first_existing_path(*candidates: Path) -> Path | None:
+            for p in candidates:
+                if p.exists():
+                    return p
+            return None
+
+        instr1_path = _first_existing_path(
+            project_root / "UI_photos" / "instr1.jpg",
+            project_root / "v2_bot" / "UI_PHOTOS" / "instr_1.jpeg",
+        )
+        example1_path = _first_existing_path(
+            project_root / "UI_photos" / "example_1.jpg",
+            project_root / "v2_bot" / "UI_PHOTOS" / "example_1.jpg",
+        )
+
+        if instr1_path and example1_path:
+            await message.answer_media_group([
+                InputMediaPhoto(media=FSInputFile(str(instr1_path))),
+                InputMediaPhoto(media=FSInputFile(str(example1_path))),
+            ])
+        else:
+            logging.warning(
+                "UI photos not found for /start: instr1=%s, example_1=%s",
+                instr1_path,
+                example1_path,
+            )
+
         # # Отправляем пустую клавиатуру, чтобы сбросить suggested action
         # await message.answer(
         #     "",
