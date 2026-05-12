@@ -4,7 +4,7 @@
 from aiogram.types import FSInputFile, InputSticker, InputFile
 import logging
 from aiogram import Router, Bot
-from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
+from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, InputMediaPhoto, FSInputFile
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -178,7 +178,7 @@ async def cmd_start(message: Message, state: FSMContext):
             )
         ]
         await bot.send_media_group(message.chat.id, media_group)
-        
+
         # Получаем username бота
         bot_info = await message.bot.get_me()
         bot_username = bot_info.username
