@@ -111,7 +111,7 @@ class StickerGrid:
     
     def get_grid_display(self) -> str:
         """Возвращает отображение всей сетки"""
-        display = f"📌 **Тема:** {self.theme}\n\n"
+        display = f"📌 **Тема:** {self.theme if self.theme else 'не выбрана'}\n\n"
         display += "💡 *Описания можно не заполнять - тогда стикеры будут на общую тему*\n"
         
         # Создаем сетку 3x3 (или меньше)
