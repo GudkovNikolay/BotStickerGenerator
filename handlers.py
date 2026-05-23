@@ -111,8 +111,7 @@ class StickerGrid:
     
     def get_grid_display(self) -> str:
         """Возвращает отображение всей сетки"""
-        display = f"📋 **Текущее состояние стикеров**\n"
-        display += f"📌 **Тема:** {self.theme}\n\n"
+        display = f"📌 **Тема:** {self.theme}\n\n"
         display += "💡 *Описания можно не заполнять - тогда стикеры будут на общую тему*\n\n"
         
         # Создаем сетку 3x3 (или меньше)
@@ -127,9 +126,9 @@ class StickerGrid:
                     row.append(f"[{idx+1}] {sticker['emoji']}")
                 else:
                     row.append("[ ]")
-            display += " | ".join(row) + "\n"
+            # display += " | ".join(row) + "\n"
         
-        display += "\n" + "─" * 30 + "\n"
+        # display += "\n" + "─" * 30 + "\n"
         
         # Детали каждого стикера
         for i, sticker in enumerate(self.stickers):
