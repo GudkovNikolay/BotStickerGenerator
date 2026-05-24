@@ -1545,7 +1545,7 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
                     user_id,
                     f"✅ **Стикерпак создан!**\n\n"
                     f"🔗 {pack_link}\n\n"
-                    f"{captions_text}"
+                    # f"{captions_text}"
                 )
             else:
                 await bot.send_message(
