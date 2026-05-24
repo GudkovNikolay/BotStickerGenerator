@@ -36,6 +36,11 @@ router = Router()
 
 pending_generations = {}
 
+def escape_markdown_stars(text: str) -> str:
+    """Экранирует только неэкранированные звездочки"""
+    # Заменяет * на \*, но только если перед ней нет обратного слеша
+    return re.sub(r'(?<!\\)\*', r'\\*', text)
+
 # Глобальный словарь для хранения информации о купонах при оплате
 # Ключ: payment_id, Значение: {'user_id': int, 'will_use_coupon': bool}
 pending_payments = {}
@@ -1040,7 +1045,7 @@ async def process_sticker_description(message: Message, state: FSMContext):
     if message.text == "/skip":
         grid.stickers[idx]['description'] = ""
     else:
-        grid.stickers[idx]['description'] = message.text
+        grid.stickers[idx]['description'] = escape_markdown_stars(message.text)
     
     await state.update_data(grid=grid.to_dict())
     
@@ -1085,7 +1090,7 @@ async def process_sticker_caption(message: Message, state: FSMContext):
     if message.text == "/skip":
         grid.stickers[idx]['caption'] = ""
     else:
-        grid.stickers[idx]['caption'] = message.text
+        grid.stickers[idx]['caption'] = escape_markdown_stars(message.text)
     
     await state.update_data(grid=grid.to_dict())
     
