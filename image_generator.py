@@ -359,12 +359,13 @@ def _split_contours_png(
 class ImageGenerator:
     """Генератор изображений через API Kie.ai (nano-banana-pro)."""
 
-    def __init__(self, use_local_file: bool = True, local_file_path: str = "kie_raw_1779617918401.png"):
+    def __init__(self, use_local_file: bool = True, local_file_path: str = "kie_raw_1779617918401.png", bg_mode: str = "magenta", magenta_tolerance: int = 50, white_bg_threshold: int = 245, morph_kernel_px: int = 5):
         """
         Args:
             use_local_file: Если True, использовать локальный файл вместо API
             local_file_path: Путь к локальному файлу с сеткой стикеров
         """
+        #git poschadi
         self.backend = "kie_ai"
         self.use_local_file = use_local_file
         self.local_file_path = local_file_path
@@ -377,7 +378,7 @@ class ImageGenerator:
         output_path: Path,
         remove_border: bool = True
     ) -> None:
-        """
+        """s
         Создает визуализацию процесса нарезки сетки.
         Рисует красным:
         - Найденные границы содержимого
