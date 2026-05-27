@@ -1,3 +1,13 @@
+#  ноутбуки с экспериментами для вкр
+
+notebooks/
+├── diplom-nb4-lora.ipynb              # Обучение LoRA на CK+
+├── diplom-nb5-lora-inference.ipynb    # Инференс: генерация с LoRA + IP-Adapter
+├── diplom-nb7-weight-lora.ipynb       # Дообучение LoRA на CK+ с чекпоинтами
+├── diplom-nb8-lora-few-emotions.ipynb # Генерация + метрики для разных scale
+├── lora-affectnet (1).ipynb           # Обучение LoRA на AffectNet
+└── scale-remake.ipynb                 # Генерация 18 конфигураций + метрики (scale-эксперимент)
+
 # Telegram Bot для генерации стикеров
 
 MVP Telegram-бота на Python для генерации наборов стикеров по текстовому промпту.
