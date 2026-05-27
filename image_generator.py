@@ -140,7 +140,13 @@ def _find_content_borders(img: Image.Image, tolerance: int = 30) -> Tuple[int, i
     return left, top, right, bottom
 
 
-def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool = True) -> List[bytes]:
+def _split_grid_png(
+    png_bytes: bytes,
+    rows: int,
+    cols: int,
+    remove_border: bool = True,
+    outer_margin_px: int = 0,
+) -> List[bytes]:
     """
     Режем PNG-сетку на rows*cols отдельных PNG-тайлов с удалением рамки.
     Без фильтров шума, только обрезка.
@@ -169,6 +175,15 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
             img = img.crop((left, top, right, bottom))
     
     w, h = img.size
+
+    # Дополнительно откусываем тонкую внешнюю рамку по периметру (до разрезания на ячейки).
+    # Это гарантирует, что крайние пиксели/линии не попадут в тайлы.
+    if outer_margin_px and outer_margin_px > 0:
+        m = int(outer_margin_px)
+        if w - 2 * m <= 0 or h - 2 * m <= 0:
+            raise ValueError(f"outer_margin_px={m} слишком большой для изображения {w}x{h}")
+        img = img.crop((m, m, w - m, h - m))
+        w, h = img.size
     
     # Вычисляем размер ячейки
     cell_w = w // cols
@@ -203,10 +218,148 @@ def _split_grid_png(png_bytes: bytes, rows: int, cols: int, remove_border: bool 
     return tiles
 
 
+def _split_contours_png(
+    png_bytes: bytes,
+    expected_rows: int,
+    expected_cols: int,
+    remove_border: bool = True,
+    outer_margin_px: int = 0,
+    min_area_ratio: float = 0.01,
+    bg_mode: str = "magenta",
+    magenta_tolerance: int = 50,
+    white_bg_threshold: int = 245,
+    morph_kernel_px: int = 5,
+) -> List[bytes]:
+    """
+    Нарезает sticker-sheet на стикеры через поиск контуров (bounding boxes).
+
+    Идея: строим маску "не фон", чистим морфологией, находим внешние контуры,
+    фильтруем мусор по площади, сортируем в expected_rows x expected_cols и режем.
+    """
+    if expected_rows <= 0 or expected_cols <= 0:
+        return []
+
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+    except Exception as e:
+        raise RuntimeError("Для contour-splitting нужен OpenCV (cv2) и numpy") from e
+
+    # Декодируем PNG/JPG bytes в cv2 image
+    arr = np.frombuffer(png_bytes, dtype=np.uint8)
+    img_bgra = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+    if img_bgra is None:
+        return []
+
+    # Приводим к BGRA для унификации
+    if img_bgra.ndim == 2:
+        img_bgra = cv2.cvtColor(img_bgra, cv2.COLOR_GRAY2BGRA)
+    elif img_bgra.shape[2] == 3:
+        img_bgra = cv2.cvtColor(img_bgra, cv2.COLOR_BGR2BGRA)
+
+    # remove_border / outer_margin_px делаем на PIL — чтобы поведение совпадало с grid-режимом
+    pil_img = Image.open(BytesIO(png_bytes))
+    if pil_img.mode != "RGBA":
+        pil_img = pil_img.convert("RGBA")
+    w, h = pil_img.size
+    if remove_border:
+        left, top, right, bottom = _find_content_borders(pil_img)
+        if left == w - right and top == h - bottom:
+            pil_img = pil_img.crop((left, top, right, bottom))
+            w, h = pil_img.size
+    if outer_margin_px and outer_margin_px > 0:
+        m = int(outer_margin_px)
+        if w - 2 * m <= 0 or h - 2 * m <= 0:
+            raise ValueError(f"outer_margin_px={m} слишком большой для изображения {w}x{h}")
+        pil_img = pil_img.crop((m, m, w - m, h - m))
+
+    # Перекодируем обратно в cv2 (чтобы контуры совпали с реально обрезанным изображением)
+    pil_rgba = pil_img.convert("RGBA")
+    np_rgba = np.array(pil_rgba)
+    img_bgra = cv2.cvtColor(np_rgba, cv2.COLOR_RGBA2BGRA)
+
+    H, W = img_bgra.shape[:2]
+    expected_n = expected_rows * expected_cols
+
+    # Маска "стикеры" (не фон).
+    # - если есть alpha: берем alpha>0
+    # - иначе: строим по bg_mode (по умолчанию фон маджента)
+    if img_bgra.shape[2] == 4 and np.any(img_bgra[:, :, 3] < 255):
+        alpha = img_bgra[:, :, 3]
+        mask = (alpha > 0).astype(np.uint8) * 255
+    else:
+        bgr = img_bgra[:, :, :3].astype(np.int16)
+        mode = (bg_mode or "magenta").lower()
+        if mode in {"magenta", "pink", "fuchsia"}:
+            # Фон = близко к #FF00FF. Используем евклидово расстояние в BGR.
+            mag = np.array([255, 0, 255], dtype=np.int16)
+            diff = bgr - mag
+            dist = np.sqrt(np.sum(diff * diff, axis=2))
+            bg = dist <= float(magenta_tolerance)
+            mask = (~bg).astype(np.uint8) * 255
+        elif mode in {"white", "near_white"}:
+            bg = np.all(bgr >= int(white_bg_threshold), axis=2)
+            mask = (~bg).astype(np.uint8) * 255
+        else:
+            # fallback: near-white
+            bg = np.all(bgr >= int(white_bg_threshold), axis=2)
+            mask = (~bg).astype(np.uint8) * 255
+
+    # Чистим маску
+    k = max(1, int(morph_kernel_px))
+    kernel = np.ones((k, k), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return []
+
+    min_area = float(H * W) * float(min_area_ratio)
+    valid = [c for c in contours if cv2.contourArea(c) >= min_area]
+    if not valid:
+        # если фильтр слишком строгий — пробуем без него
+        valid = contours
+
+    boxes = [cv2.boundingRect(c) for c in valid]  # x,y,w,h
+    # Если контуров слишком много — берём крупнейшие (часто это и есть стикеры)
+    if len(boxes) > expected_n:
+        boxes = sorted(boxes, key=lambda b: b[2] * b[3], reverse=True)[:expected_n]
+
+    # Сортировка в expected_rows строк: сначала по y, потом внутри строки по x
+    centers = [(x + bw / 2.0, y + bh / 2.0) for (x, y, bw, bh) in boxes]
+    idx_by_y = sorted(range(len(boxes)), key=lambda i: centers[i][1])
+
+    rows: List[List[int]] = []
+    if len(idx_by_y) >= expected_n:
+        chunks = np.array_split(np.array(idx_by_y[:expected_n]), expected_rows)
+        rows = [list(chunk) for chunk in chunks]
+    else:
+        # fallback: одна "строка", просто слева направо
+        rows = [idx_by_y]
+
+    ordered_idx: List[int] = []
+    for row in rows:
+        row_sorted = sorted(row, key=lambda i: centers[i][0])
+        ordered_idx.extend(row_sorted)
+
+    ordered_boxes = [boxes[i] for i in ordered_idx][:expected_n]
+
+    # Режем и сохраняем каждый тайл в PNG bytes (через PIL, чтобы не потерять alpha)
+    tiles: List[bytes] = []
+    for (x, y, bw, bh) in ordered_boxes:
+        crop = pil_rgba.crop((int(x), int(y), int(x + bw), int(y + bh)))
+        buf = BytesIO()
+        crop.save(buf, format="PNG")
+        tiles.append(buf.getvalue())
+
+    return tiles
+
+
 class ImageGenerator:
     """Генератор изображений через API Kie.ai (nano-banana-pro)."""
 
-    def __init__(self, use_local_file: bool = False, local_file_path: str = "kie_raw_1774723597590.png"):
+    def __init__(self, use_local_file: bool = True, local_file_path: str = "kie_raw_1779617918401.png"):
         """
         Args:
             use_local_file: Если True, использовать локальный файл вместо API
@@ -392,6 +545,8 @@ class ImageGenerator:
         grid_rows: int = 3,
         grid_cols: int = 3,
         reference_image_path: Optional[str] = None,
+        outer_margin_px: int = 0,
+        split_method: str = "grid",
     ) -> List[Path]:
         """Генерация стикеров с удалением рамки, но без фильтров шума."""
         try:
@@ -400,7 +555,9 @@ class ImageGenerator:
                 return await self._generate_from_local_file(
                     count=count,
                     grid_rows=grid_rows,
-                    grid_cols=grid_cols
+                    grid_cols=grid_cols,
+                    outer_margin_px=outer_margin_px,
+                    split_method=split_method,
                 )
             
             # Обычный режим с API
@@ -439,7 +596,14 @@ class ImageGenerator:
             kie_raw_path.write_bytes(grid_bytes)
             logger.info(f"Сохранена сырая картинка от Kie: {kie_raw_path}")
 
-            return self._process_grid_bytes(grid_bytes, count, grid_rows, grid_cols)
+            return self._process_grid_bytes(
+                grid_bytes,
+                count,
+                grid_rows,
+                grid_cols,
+                outer_margin_px=outer_margin_px,
+                split_method=split_method,
+            )
 
         except Exception as e:
             logger.error(f"Ошибка генерации сетки стикеров: {e}")
@@ -479,6 +643,8 @@ class ImageGenerator:
         count: int = 0,
         grid_rows: int = 3,
         grid_cols: int = 3,
+        outer_margin_px: int = 0,
+        split_method: str = "grid",
     ) -> List[Path]:
         """Генерирует стикеры из локального файла с сеткой."""
         try:
@@ -501,7 +667,14 @@ class ImageGenerator:
                 img.save(buf, format="PNG")
                 grid_bytes = buf.getvalue()
             
-            return self._process_grid_bytes(grid_bytes, count, grid_rows, grid_cols)
+            return self._process_grid_bytes(
+                grid_bytes,
+                count,
+                grid_rows,
+                grid_cols,
+                outer_margin_px=outer_margin_px,
+                split_method=split_method,
+            )
             
         except Exception as e:
             logger.error(f"Ошибка при работе с локальным файлом: {e}")
@@ -526,11 +699,28 @@ class ImageGenerator:
         grid_bytes: bytes, 
         count: int, 
         grid_rows: int, 
-        grid_cols: int
+        grid_cols: int,
+        outer_margin_px: int = 0,
+        split_method: str = "grid",
     ) -> List[Path]:
         """Обрабатывает байты сетки и возвращает пути к нарезанным стикерам."""
-        # Используем нарезку с удалением рамки, но без фильтров шума
-        tiles = _split_grid_png(grid_bytes, grid_rows, grid_cols, remove_border=True)
+        # Нарезка: либо по сетке, либо по контурам
+        if (split_method or "grid").lower() in {"contours", "contour", "bbox", "bboxes"}:
+            tiles = _split_contours_png(
+                grid_bytes,
+                expected_rows=grid_rows,
+                expected_cols=grid_cols,
+                remove_border=True,
+                outer_margin_px=outer_margin_px,
+            )
+        else:
+            tiles = _split_grid_png(
+                grid_bytes,
+                grid_rows,
+                grid_cols,
+                remove_border=True,
+                outer_margin_px=outer_margin_px,
+            )
         
         if not tiles:
             raise Exception("Не удалось разрезать сетку на тайлы")

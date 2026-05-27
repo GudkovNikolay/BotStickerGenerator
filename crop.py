@@ -169,6 +169,7 @@ def crop_image_to_sticker_content(
 
     
     # Старая логика для обычных случаев
+    print(rembg_remove is not None)
     if rembg_remove is not None:
         img = rembg_remove(img)
         return crop_to_nontransparent_bbox(img, alpha_threshold=alpha_threshold)
