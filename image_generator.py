@@ -359,7 +359,7 @@ def _split_contours_png(
 class ImageGenerator:
     """Генератор изображений через API Kie.ai (nano-banana-pro)."""
 
-    def __init__(self, use_local_file: bool = True, local_file_path: str = "kie_raw_1779617918401.png", bg_mode: str = "magenta", magenta_tolerance: int = 50, white_bg_threshold: int = 245, morph_kernel_px: int = 5):
+    def __init__(self, use_local_file: bool = False, local_file_path: str = "kie_raw_1779617918401.png", bg_mode: str = "magenta", magenta_tolerance: int = 50, white_bg_threshold: int = 245, morph_kernel_px: int = 5):
         """
         Args:
             use_local_file: Если True, использовать локальный файл вместо API
