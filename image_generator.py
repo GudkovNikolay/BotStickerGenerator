@@ -547,7 +547,7 @@ class ImageGenerator:
         grid_cols: int = 3,
         reference_image_path: Optional[str] = None,
         outer_margin_px: int = 0,
-        split_method: str = "grid",
+        split_method: str = "contours",
     ) -> List[Path]:
         """Генерация стикеров с удалением рамки, но без фильтров шума."""
         try:
