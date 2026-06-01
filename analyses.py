@@ -4,7 +4,6 @@
 import asyncio
 from sqlalchemy import select, update, insert
 from database import engine, User, DiscountCoupon, ReferralReward
-from sqlalchemy import func
 from datetime import datetime
 
 async def simulate_referral_flow():
@@ -38,8 +37,7 @@ async def simulate_referral_flow():
             print(f"      Имя: {referred_user.first_name}")
             print(f"      referred_by: {referred_user.referred_by}")
         else:
-            print(f"   ⚠️ Пользователь не найден, нужно создавать нового")
-            print(f"   (но в вашей выгрузке Савва уже есть - ID 7)")
+            print(f"   ⚠️ Пользователь не найден")
         
         # ШАГ 3: Бот ищет реферера по коду JMS7PLKZ
         print("\n🔍 ШАГ 3: Поиск реферера по коду 'JMS7PLKZ'")
@@ -56,15 +54,14 @@ async def simulate_referral_flow():
             print(f"      Реферальный код: {referrer.referral_code}")
         else:
             print(f"   ❌ РЕФЕРЕР НЕ НАЙДЕН!")
-            print(f"      Это могло быть причиной!")
         
         # ШАГ 4: Проверка, не использовал ли Савва уже рефералку
         print("\n🔍 ШАГ 4: Проверка referred_by у Саввы")
         
-        if referred_user.referred_by is not None:
+        if referred_user and referred_user.referred_by is not None:
             print(f"   ❌ referred_by уже = {referred_user.referred_by}")
             print(f"   Награда НЕ будет выдана (уже есть реферер)")
-        else:
+        elif referred_user:
             print(f"   ✅ referred_by = None - можно выдавать награду")
         
         # ШАГ 5: Если все ок - выдаем награду
@@ -116,18 +113,20 @@ async def simulate_referral_flow():
                 print("   - Пользователь Савва не найден")
             if referred_user and referred_user.referred_by is not None:
                 print(f"   - У Саввы уже есть реферер: {referred_user.referred_by}")
-        
-        # ШАГ 6: Финальная проверка - смотрим всех пользователей
-        print("\n" + "="*60)
-        print("📊 ФИНАЛЬНОЕ СОСТОЯНИЕ БД")
-        print("="*60)
-        
+
+    # Отдельный блок для финальной проверки (новая транзакция)
+    print("\n" + "="*60)
+    print("📊 ФИНАЛЬНОЕ СОСТОЯНИЕ БД")
+    print("="*60)
+    
+    async with engine.begin() as conn:
         # Все пользователи
         result = await conn.execute(select(User).order_by(User.id))
         users = result.fetchall()
         print("\n👥 ПОЛЬЗОВАТЕЛИ:")
         for user in users:
-            print(f"   ID {user.id}: telegram_id={user.telegram_id}, referred_by={user.referred_by}, код={user.referral_code}")
+            ref_by = user.referred_by if hasattr(user, 'referred_by') else None
+            print(f"   ID {user.id}: telegram_id={user.telegram_id}, referred_by={ref_by}, код={user.referral_code}")
         
         # Купоны
         result = await conn.execute(select(DiscountCoupon))
@@ -144,54 +143,55 @@ async def simulate_referral_flow():
             print(f"   ID {reward.id}: referrer_id={reward.referrer_id}, referred_id={reward.referred_id}")
 
 
-async def check_problematic_user():
-    """Проверяем проблемного пользователя ID 3"""
+async def check_current_state():
+    """Проверка текущего состояния БД"""
     print("\n" + "="*60)
-    print("🔍 ПРОВЕРКА ПРОБЛЕМНОГО ПОЛЬЗОВАТЕЛЯ ID 3")
+    print("📊 ТЕКУЩЕЕ СОСТОЯНИЕ БД")
     print("="*60)
     
     async with engine.begin() as conn:
-        result = await conn.execute(select(User).where(User.id == 3))
-        user = result.first()
+        # Проверяем пользователя 1 (вас)
+        result = await conn.execute(select(User).where(User.id == 1))
+        user1 = result.first()
+        if user1:
+            print(f"\n✅ Ваш аккаунт (ID 1):")
+            print(f"   Telegram ID: {user1.telegram_id}")
+            print(f"   Реферальный код: {user1.referral_code}")
         
-        if user:
-            print(f"\n⚠️ НАЙДЕН АНОМАЛЬНЫЙ ПОЛЬЗОВАТЕЛЬ:")
-            print(f"   ID: {user.id}")
-            print(f"   Telegram ID: {user.telegram_id} ← ЭТО НЕ МОЖЕТ БЫТЬ 1!")
-            print(f"   Имя: {user.first_name}")
-            print(f"   referred_by: {user.referred_by}")
-            
-            # Проверяем, нет ли конфликта с вашим реальным Telegram ID
-            result = await conn.execute(
-                select(User).where(User.telegram_id == 788139267)
-            )
-            real_you = result.first()
-            
-            if real_you:
-                print(f"\n✅ ВАШ РЕАЛЬНЫЙ АККАУНТ (telegram_id 788139267):")
-                print(f"   ID: {real_you.id}")
-                print(f"   Telegram ID: {real_you.telegram_id}")
-                print(f"   referred_by: {real_you.referred_by}")
-                
-                if real_you.id == 1:
-                    print(f"\n✅ ВСЕ ХОРОШО: Ваш аккаунт ID=1, telegram_id правильный")
-                else:
-                    print(f"\n❌ ПРОБЛЕМА: Ваш аккаунт имеет ID={real_you.id}, а не 1")
-            else:
-                print(f"\n❌ ПРОБЛЕМА: Пользователь с telegram_id=788139267 НЕ НАЙДЕН!")
-                print(f"   Возможно, ID 3 - это ваш аккаунт с битым telegram_id")
-        else:
-            print("\n✅ Пользователь ID 3 не найден")
+        # Проверяем пользователя 7 (Савву)
+        result = await conn.execute(select(User).where(User.id == 7))
+        user7 = result.first()
+        if user7:
+            print(f"\n✅ Аккаунт Саввы (ID 7):")
+            print(f"   Telegram ID: {user7.telegram_id}")
+            print(f"   referred_by: {user7.referred_by}")
+        
+        # Проверяем купоны для вас
+        result = await conn.execute(
+            select(DiscountCoupon).where(DiscountCoupon.user_id == 1)
+        )
+        coupons = result.fetchall()
+        print(f"\n🎫 Ваши купоны (user_id=1): {len(coupons)}")
+        for coupon in coupons:
+            print(f"   ID {coupon.id}: от пользователя ID {coupon.source_user_id}, использован: {coupon.used}")
+        
+        # Проверяем проблемного пользователя ID 3
+        result = await conn.execute(select(User).where(User.id == 3))
+        user3 = result.first()
+        if user3:
+            print(f"\n⚠️ Пользователь ID 3:")
+            print(f"   Telegram ID: {user3.telegram_id} (аномалия!)")
+            print(f"   referred_by: {user3.referred_by}")
 
 
 async def manual_fix():
-    """Ручное исправление"""
+    """Ручное исправление - добавить награду если ее нет"""
     print("\n" + "="*60)
-    print("🔧 РУЧНОЕ ИСПРАВЛЕНИЕ")
+    print("🔧 ПРОВЕРКА И ДОБАВЛЕНИЕ НАГРАДЫ")
     print("="*60)
     
     async with engine.begin() as conn:
-        # Проверяем, есть ли уже купон для вас
+        # Проверяем, есть ли уже купон для вас от Саввы
         result = await conn.execute(
             select(DiscountCoupon).where(
                 DiscountCoupon.user_id == 1,
@@ -201,9 +201,15 @@ async def manual_fix():
         existing = result.first()
         
         if existing:
-            print(f"\n⚠️ Купон уже существует: {existing}")
+            print(f"\n✅ Купон уже существует:")
+            print(f"   ID: {existing.id}")
+            print(f"   user_id: {existing.user_id}")
+            print(f"   source_user_id: {existing.source_user_id}")
+            print(f"   used: {existing.used}")
         else:
-            print("\n✅ Создаем недостающий купон...")
+            print("\n❌ Купона нет! Создаем...")
+            
+            # Создаем купон
             await conn.execute(
                 insert(DiscountCoupon).values(
                     user_id=1,
@@ -213,17 +219,24 @@ async def manual_fix():
                 )
             )
             
-            # Обновляем referred_by у Саввы
-            await conn.execute(
-                update(User)
-                .where(User.id == 7)
-                .values(referred_by=1)
+            # Обновляем referred_by у Саввы если нужно
+            result = await conn.execute(
+                select(User).where(User.id == 7)
             )
+            savva = result.first()
+            
+            if savva and savva.referred_by is None:
+                await conn.execute(
+                    update(User)
+                    .where(User.id == 7)
+                    .values(referred_by=1)
+                )
+                print("   ✅ referred_by у Саввы обновлен")
             
             await conn.commit()
-            print("✅ Награда добавлена вручную!")
+            print("   ✅ Награда добавлена!")
 
 
 if __name__ == "__main__":
     asyncio.run(simulate_referral_flow())
-    asyncio.run(check_problematic_user())
+    asyncio.run(check_current_state())
