@@ -14,8 +14,8 @@ async def get_analytics():
             result = await conn.execute(
                 select(
                     func.count(func.distinct(User.id)).label('total_users'),
-                    func.count(func.distinct(Payment.user_id)).filter(Payment.status == 'success').label('paying_users'),
-                    func.sum(Payment.amount).filter(Payment.status == 'success').label('total_revenue')
+                    func.count(func.distinct(Payment.user_id)).filter(Payment.status == 'succeeded').label('paying_users'),
+                    func.sum(Payment.amount).filter(Payment.status == 'succeeded').label('total_revenue')
                 )
             )
             stats = result.first()
