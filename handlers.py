@@ -762,10 +762,11 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
     ])
     
     keyboard_buttons.append([
-        InlineKeyboardButton(text=generate_button_text, callback_data="grid_generate"),
+        InlineKeyboardButton(text=generate_button_text, callback_data="grid_generate")
+    ])
+    keyboard_buttons.append([
         InlineKeyboardButton(text="❌ Отмена", callback_data="grid_cancel")
     ])
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     action = "Редактирование" if edit else "Текущее состояние"
