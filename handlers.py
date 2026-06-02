@@ -705,6 +705,29 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
     has_reference_photo = bool(data.get("reference_photo_path"))
     display = grid.get_grid_display()
     display += f"\n\n📷 Референс фото {'загружено' if has_reference_photo else 'не загружено'}"
+
+    generate_button_text = "✅ Генерировать!"
+    session = None
+    try:
+        session = await get_session()
+        db_service = DatabaseService(session)
+        user = await db_service.get_or_create_user(telegram_id=message.chat.id)
+        stats = await db_service.get_user_stats(user.id)
+        paid_generations_left = stats.get("paid_generations_left", 0)
+
+        # Если у пользователя нет оплаченных генераций — показываем цену прямо на кнопке
+        if paid_generations_left <= 0:
+            discount = await db_service.get_user_discount(user.id)
+            original_price = settings.STICKER_PACK_PRICE
+            final_price = original_price
+            if discount.get("has_discount"):
+                final_price = original_price * (100 - discount["discount_percent"]) / 100
+            generate_button_text = f"✅ Генерировать! ({final_price:.0f} ₽)"
+    except Exception as e:
+        logger.warning(f"Не удалось вычислить цену для кнопки генерации: {e}")
+    finally:
+        if session is not None:
+            await session.close()
     
     # Создаем клавиатуру с кнопками для каждого стикера
     keyboard_buttons = []
@@ -739,7 +762,7 @@ async def show_grid_main(message: Message, state: FSMContext, grid: StickerGrid,
     ])
     
     keyboard_buttons.append([
-        InlineKeyboardButton(text="✅ Генерировать!", callback_data="grid_generate"),
+        InlineKeyboardButton(text=generate_button_text, callback_data="grid_generate"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="grid_cancel")
     ])
     
