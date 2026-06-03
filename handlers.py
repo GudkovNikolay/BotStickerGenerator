@@ -1434,6 +1434,7 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
     
     # Базовая часть промпта
     prompt = f"Create a sticker sheet with {len(grid.stickers)} different stickers.\n\n"
+    prompt += f"IMPORTANT LANGUAGE RULE: All text captions must remain in their original language. DO NOT translate, DO NOT change language, keep EXACTLY as provided.\n\n"
     prompt += f"Overall theme: {grid.theme}\n\n"
 
     if has_reference_photo:
@@ -1455,7 +1456,7 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
             
             # Добавляем подпись в промпт, если она есть
             if sticker['caption']:
-                prompt += f" - Include text caption '{sticker['caption']}' on the sticker (keep exactly as written, do not translate)"
+                prompt += f" - Include text caption '{sticker['caption']}' on the sticker. CRITICAL: This text must appear EXACTLY as written — keep original language, characters, and spelling. NO translation."
             else:
                 prompt += f" - Do not include any text on the sticker"
             prompt += "\n"
@@ -1467,9 +1468,9 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
         # Добавляем подписи, если они есть
         captions = [s['caption'] for s in grid.stickers if s['caption']]
         if captions:
-            prompt += "\nInclude these text captions on the respective stickers:\n"
+            prompt += "\nInclude these text captions on the respective stickers (keep EXACTLY as written, no translation):\n"
             for i, caption in enumerate(captions, 1):
-                prompt += f"Sticker {i}: include caption '{caption}'\n"
+                prompt += f"Sticker {i}: include caption '{caption}' — do NOT translate, keep original language\n"
     
     prompt += """
     Technical requirements:
@@ -1483,6 +1484,7 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
     - NO shadows, NO gradients on the background
     - Consistent art style across all stickers
     - High quality, suitable for Telegram stickers
+    - TEXT LANGUAGE INTEGRITY: Render all text captions exactly as provided. Preserve original language, script, and spelling. NO translation, NO transliteration, NO language conversion of any kind.
     - If captions are specified, they should be clearly visible and integrated into the sticker design
     """
     
