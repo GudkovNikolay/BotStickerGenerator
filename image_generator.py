@@ -235,6 +235,9 @@ def _split_contours_png(
 
     Идея: строим маску "не фон", чистим морфологией, находим внешние контуры,
     фильтруем мусор по площади, сортируем в expected_rows x expected_cols и режем.
+    
+    Если найден только один контур (или ни одного), пробуем перестроить маску,
+    определив цвет фона по левому верхнему углу изображения.
     """
     if expected_rows <= 0 or expected_cols <= 0:
         return []
@@ -312,6 +315,26 @@ def _split_contours_png(
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Если нашли только один контур (или ни одного), пробуем определить фон по углу
+    if len(contours) <= 1:
+        # Берём цвет из левого верхнего угла (область 5x5 пикселей, медиана для устойчивости)
+        corner_region = img_bgra[0:5, 0:5, :3]  # BGR, без альфы
+        corner_color_bgr = np.median(corner_region, axis=(0, 1)).astype(np.int16)
+
+        # Строим маску: фон = близко к цвету угла
+        bgr = img_bgra[:, :, :3].astype(np.int16)
+        diff = bgr - corner_color_bgr
+        dist = np.sqrt(np.sum(diff * diff, axis=2))
+        bg = dist <= float(magenta_tolerance)
+        mask = (~bg).astype(np.uint8) * 255
+
+        # Чистим маску заново
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
     if not contours:
         return []
 
