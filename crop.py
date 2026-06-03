@@ -123,7 +123,7 @@ def crop_image_to_sticker_content(
     *,
     alpha_threshold: int = 1,
     bg_tolerance: int = 100,
-    magenta_bg: bool = True,  # Новый параметр
+    magenta_bg: bool = True,
 ) -> Image.Image:
     """
     Версия "in-memory": используется внутри пайплайна стикера.
@@ -132,9 +132,9 @@ def crop_image_to_sticker_content(
         img: Входное изображение
         alpha_threshold: Порог прозрачности для обрезки
         bg_tolerance: Допуск для удаления фона по цвету
-        magenta_bg: Если True, удаляет маджентовый фон (#FF00FF)
+        magenta_bg: Если True, удаляет маджентовый фон (#FF00FF). 
+                    Если маджента не сработала (маска пустая), пробует определить фон по левому верхнему углу.
     """
-    # Если включен режим маджентового фона
     if magenta_bg:
         tolerance = bg_tolerance
         # Конвертируем в RGB (на случай если PNG с альфа-каналом)
@@ -148,12 +148,21 @@ def crop_image_to_sticker_content(
         magenta = np.array([255, 0, 255])
         
         # Вычисляем разницу каждого пикселя с маджентой
-        # Простое евклидово расстояние
         diff = np.sqrt(np.sum((img_array - magenta) ** 2, axis=2))
         
         # Создаем маску: True для пикселей, которые НЕ маджента
-        # tolerance: чем меньше, тем строже (только точная маджента становится прозрачной)
         mask = diff > tolerance
+        
+        # --- НОВАЯ ЛОГИКА: если маска пустая (все пиксели — фон), пробуем цвет из угла ---
+        if not np.any(mask):
+            # Берём цвет из левого верхнего угла (область 5x5, медиана для устойчивости)
+            corner_region = img_array[0:5, 0:5, :]
+            corner_color = np.median(corner_region, axis=(0, 1))
+            
+            # Строим маску относительно цвета угла
+            diff = np.sqrt(np.sum((img_array - corner_color) ** 2, axis=2))
+            mask = diff > tolerance
+        # --- конец новой логики ---
         
         # Создаем RGBA изображение (добавляем альфа-канал)
         rgba = np.zeros((img_array.shape[0], img_array.shape[1], 4), dtype=np.uint8)
@@ -163,9 +172,10 @@ def crop_image_to_sticker_content(
         # Превращаем обратно в PIL Image
         result = Image.fromarray(rgba, mode='RGBA')
         
-        # Сохраняем
-        
         return result
+    
+    # Оригинальная логика без magenta_bg (если нужна)
+    # ... тут существующий код для других режимов ...
 
     
     # Старая логика для обычных случаев
