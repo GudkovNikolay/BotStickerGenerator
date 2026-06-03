@@ -1455,7 +1455,7 @@ def create_grid_prompt(grid: StickerGrid, *, has_reference_photo: bool = False) 
             
             # Добавляем подпись в промпт, если она есть
             if sticker['caption']:
-                prompt += f" - Include text caption '{sticker['caption']}' on the sticker"
+                prompt += f" - Include text caption '{sticker['caption']}' on the sticker (keep exactly as written, do not translate)"
             else:
                 prompt += f" - Do not include any text on the sticker"
             prompt += "\n"
