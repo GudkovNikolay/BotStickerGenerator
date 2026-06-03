@@ -1525,7 +1525,7 @@ async def create_sticker_pack_from_grid(bot, user_id: int, stickers_paths: List[
         base_name = "s" + base_name
     
     pack_name = f"{base_name}_by_{bot_username}"
-    pack_title = f"Стикеры: {grid_theme[:30]}"
+    pack_title = f"{bot_username}"
     
     logger.info('iuhbiuaherghewrijgiqejrgiqejrgiojheqrg')
     # Подготавливаем стикеры с эмодзи из сетки
